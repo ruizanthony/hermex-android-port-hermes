@@ -33,7 +33,7 @@ class ChatRefreshInstrumentedTest {
                         {"id":"1","role":"user","content":"Workshop question"},
                         {"id":"2","role":"assistant","content":"Initial answer"},
                         {"id":"3","role":"user","content":"Internal event","display_kind":"process_wakeup"},
-                        {"id":"4","role":"assistant","content":"Technical acknowledgement"}
+                        {"id":"4","role":"assistant","content":"Technical acknowledgement","_source":"process_wakeup"}
                         ${if(fresh.get()>0) ",{\"id\":\"5\",\"role\":\"user\",\"content\":\"External question\"},{\"id\":\"6\",\"role\":\"assistant\",\"content\":\"${if(fresh.get()==1) "External answer received" else "Foreground answer restored"}\"}" else ""}
                     ]}}"""
                     else -> "{}"
