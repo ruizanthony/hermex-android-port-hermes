@@ -2,6 +2,8 @@ package com.uzairansar.hermex
 
 import android.app.Application
 import android.graphics.Bitmap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -11,7 +13,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.uzairansar.hermex.data.repository.AuthState
 import com.uzairansar.hermex.data.secure.ServerAccount
 import com.uzairansar.hermex.ui.sessions.SessionListRoute
@@ -88,7 +89,8 @@ class SessionCompressionInstrumentedTest {
         assertTrue(compose.onAllNodesWithTag("session_row_old").fetchSemanticsNodes().isEmpty())
         assertTrue(compose.onAllNodesWithTag("session_row_middle").fetchSemanticsNodes().isEmpty())
         compose.onNodeWithTag("session_row_independent").performScrollTo().assertIsDisplayed()
-        val screenshot=InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
+        compose.waitForIdle()
+        val screenshot=compose.onNodeWithTag("session_list").captureToImage().asAndroidBitmap()
         File(app.getExternalFilesDir(null),"compression-grouped.png").outputStream().use { screenshot.compress(Bitmap.CompressFormat.PNG,100,it) }
         screenshot.recycle()
         compose.onNodeWithTag("session_row_tip").performScrollTo().performClick()
