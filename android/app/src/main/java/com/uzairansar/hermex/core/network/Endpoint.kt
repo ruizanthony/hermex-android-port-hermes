@@ -38,6 +38,9 @@ sealed class Endpoint(
             "expand_renderable" to expandRenderable.asIosQueryFlagOrNull(),
         ),
     )
+    data class SessionMetadata(val id: String) : Endpoint(
+        "/api/session", listOf("session_id" to id, "messages" to "0", "resolve_model" to "0"),
+    )
     data class SessionStatus(val id: String) : Endpoint("/api/session/status", listOf("session_id" to id))
     data class SessionUsage(val id: String) : Endpoint("/api/session/usage", listOf("session_id" to id))
     data object NewSession : Endpoint("/api/session/new")

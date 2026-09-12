@@ -5,6 +5,10 @@ name `Hermex`) for a self-hosted `hermes-webui` server. `PROJECT_SPEC.md` is the
 product/API source of truth — if a request conflicts with it, stop and ask.
 Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
 
+## Android fork scope
+
+For the unofficial Hermex Pichot Android fork, read `android/AGENTS.md` before working under `android/`. The iOS-specific tooling below is not an Android validation requirement; leave the iOS implementation and upstream release branches unchanged.
+
 ## Session start & wrap-up
 - Read `CURRENT.md` first if it exists — it holds the latest resumable state. It is
   local-only (gitignored), never committed; a fresh clone won't have one.

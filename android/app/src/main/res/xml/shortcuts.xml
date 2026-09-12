@@ -7,7 +7,7 @@
         android:shortcutLongLabel="@string/shortcut_sessions_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.uzairansar.hermex"
+            android:targetPackage="com.uzairansar.hermex.pichot"
             android:targetClass="com.uzairansar.hermex.MainActivity"
             android:data="hermes-agent://sessions" />
     </shortcut>
@@ -20,7 +20,7 @@
         android:shortcutLongLabel="@string/shortcut_new_session_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.uzairansar.hermex"
+            android:targetPackage="com.uzairansar.hermex.pichot"
             android:targetClass="com.uzairansar.hermex.MainActivity"
             android:data="hermes-agent://sessions?shortcutAction=new" />
     </shortcut>
@@ -33,7 +33,7 @@
         android:shortcutLongLabel="@string/shortcut_new_voice_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="com.uzairansar.hermex"
+            android:targetPackage="com.uzairansar.hermex.pichot"
             android:targetClass="com.uzairansar.hermex.MainActivity"
             android:data="hermes-agent://new-chat-voice" />
     </shortcut>

@@ -70,6 +70,9 @@ class HermesApiClient(
         get(Endpoint.SessionsSearch(query, content, depth))
     suspend fun session(id: String, includeMessages: Boolean = true, limit: Int? = 50, before: Int? = null): SessionResponse =
         get(Endpoint.Session(id, includeMessages, limit, before))
+    suspend fun sessionMetadata(id: String): com.uzairansar.hermex.core.model.SessionMetadataResponse =
+        get(Endpoint.SessionMetadata(id))
+
     suspend fun sessionStatus(id: String): SessionStatusResponse = get(Endpoint.SessionStatus(id))
     suspend fun sessionUsage(sessionId: String): SessionUsageResponse = get(Endpoint.SessionUsage(sessionId))
     suspend fun newSession(request: NewSessionRequest = NewSessionRequest()): SessionMutationResponse = post(Endpoint.NewSession, request)

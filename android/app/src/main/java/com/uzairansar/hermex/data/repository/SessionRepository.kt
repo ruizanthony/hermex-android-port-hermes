@@ -37,6 +37,7 @@ class SessionRepository(
     private val exportDirectoryProvider: (() -> File)? = null,
 ) {
     private val serverUrl = client.baseUrl.toString()
+    private val lineageEnricher = SessionLineageEnricher()
 
     suspend fun loadCachedSessions(includeArchived: Boolean = false): SessionPage? =
         loadCachedSessions(
@@ -53,7 +54,9 @@ class SessionRepository(
                 includeArchived = includeArchived,
                 archivedLimit = ARCHIVED_SYNC_LIMIT.takeIf { includeArchived },
             )
-            val allSessions = response.sessions.orEmpty()
+            val allSessions = lineageEnricher.enrich(response.sessions.orEmpty()) { id ->
+                client.sessionMetadata(id).session
+            }
             val sessions = allSessions.filter { includeArchived || it.archived != true }
             val entities = allSessions.mapNotNull { CachedSessionEntity.from(serverUrl, it, now) }
             val archivedReturned = allSessions.count { it.archived == true }

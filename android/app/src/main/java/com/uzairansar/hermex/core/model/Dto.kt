@@ -61,6 +61,9 @@ data class SessionSearchResponse(
 )
 
 @Serializable
+data class SessionMetadataResponse(val session: SessionSummary? = null)
+
+@Serializable
 data class SessionResponse(
     val session: SessionDetail? = null,
 )
@@ -180,6 +183,9 @@ data class SessionSummary(
     @SerialName("read_only") val readOnly: Boolean? = null,
     @SerialName("is_read_only") val isReadOnly: Boolean? = null,
     @SerialName("match_type") val matchType: String? = null,
+    @SerialName("pre_compression_snapshot") val preCompressionSnapshot: Boolean? = null,
+    @SerialName("continuation_session_id") val continuationSessionId: String? = null,
+    @SerialName("_lineage_root_id") val lineageRootId: String? = null,
 ) {
     val stableId: String
         get() = sessionId?.takeIf { it.isNotBlank() }

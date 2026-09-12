@@ -64,7 +64,7 @@ internal enum class AppIconChoice(
     );
 
     internal fun componentName(packageName: String): ComponentName =
-        ComponentName(packageName, "$packageName.launcher.$aliasName")
+        ComponentName(packageName, "${com.uzairansar.hermex.MainActivity::class.java.`package`!!.name}.launcher.$aliasName")
 }
 
 internal enum class AppIconComponentState {

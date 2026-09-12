@@ -365,6 +365,11 @@ fun SessionListRoute(
                         onSettings = onOpenSettings,
                     )
                 }
+                item {
+                    TextButton(onClick = viewModel::toggleCompressionSegments) {
+                        Text(if (state.showCompressionSegments) "Regrouper les conversations" else "Afficher les segments de compression")
+                    }
+                }
                 if (state.showArchived) {
                     item {
                         ArchivedModeRow(
