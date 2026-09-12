@@ -44,7 +44,8 @@ class SessionCompressionInstrumentedTest {
 
     @Test fun rendersOneLinePreservesLiveNavigationAndCanRevealHistory() = runScenario(false)
     @Test fun missingRedirectAndCrossSurfaceLifecycleStillGroup() = runScenario(true)
-    private fun runScenario(lifecycle: Boolean) {
+    @Test fun inconclusiveSuccessfulReportFallsBackToMetadataRedirect() = runScenario(false,true)
+    private fun runScenario(lifecycle: Boolean, inconclusive: Boolean = false) {
         val requests=CopyOnWriteArrayList<String>()
         val mock=MockWebServer().also { server=it }
         fun json(body:String)=MockResponse.Builder().code(200).body(body).build()
@@ -61,7 +62,8 @@ class SessionCompressionInstrumentedTest {
                         {"session_id":"independent","title":"Independent conversation","last_message_at":4}
                     ],"archived_count":0}""")
                     "/api/session/lineage/report" -> {
-                        if (!lifecycle) MockResponse.Builder().code(404).body("{}").build() else {
+                        if (inconclusive) json("""{"found":true,"session_id":"${request.url.queryParameter("session_id")}","manual_review":false,"total_segments":1,"segments":[],"children":[]}""")
+                        else if (!lifecycle) MockResponse.Builder().code(404).body("{}").build() else {
                             val id=request.url.queryParameter("session_id")
                             val next=if(id=="old") "middle" else "tip"
                             val source=if(id=="old") "desktop" else "webui"

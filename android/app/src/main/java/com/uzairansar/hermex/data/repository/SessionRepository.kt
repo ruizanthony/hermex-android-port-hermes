@@ -58,9 +58,9 @@ class SessionRepository(
                 val original = response.sessions.orEmpty().first { it.sessionId == id }
                 try {
                     val report = client.compressionLineageReport(id)
-                    if (report.found == true && report.sessionId == id) {
-                        confirmCompressionReport(original, response.sessions.orEmpty(), report)
-                    } else client.sessionMetadata(id).session
+                    val confirmed = confirmCompressionReport(original, response.sessions.orEmpty(), report)
+                    if (!confirmed.continuationSessionId.isNullOrBlank()) confirmed
+                    else client.sessionMetadata(id).session ?: original
                 } catch (error: CancellationException) { throw error }
                 catch (_: Exception) { client.sessionMetadata(id).session }
             }
