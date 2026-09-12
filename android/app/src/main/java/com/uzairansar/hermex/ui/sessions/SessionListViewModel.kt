@@ -27,6 +27,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -303,6 +304,14 @@ class SessionListViewModel(
         }
         refresh()
         refreshProfiles()
+    }
+
+    internal suspend fun refreshWhileVisible() {
+        if (refreshJob?.isActive == true || _state.value.isMutating || _state.value.isSwitchingProfile) return
+        refresh(clearNotice = false)
+        try { refreshJob?.join() } finally {
+            if (!kotlinx.coroutines.currentCoroutineContext().isActive) refreshJob?.cancel()
+        }
     }
 
     fun refresh(clearNotice: Boolean = true) {
