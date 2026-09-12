@@ -70,6 +70,9 @@ class HermesApiClient(
         get(Endpoint.SessionsSearch(query, content, depth))
     suspend fun session(id: String, includeMessages: Boolean = true, limit: Int? = 50, before: Int? = null): SessionResponse =
         get(Endpoint.Session(id, includeMessages, limit, before))
+    internal suspend fun compressionLineageReport(id: String): com.uzairansar.hermex.data.repository.CompressionReport =
+        get(Endpoint.CompressionLineageReport(id))
+
     suspend fun sessionMetadata(id: String): com.uzairansar.hermex.core.model.SessionMetadataResponse =
         get(Endpoint.SessionMetadata(id))
 

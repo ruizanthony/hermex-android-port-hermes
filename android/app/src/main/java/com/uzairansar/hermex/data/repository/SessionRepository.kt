@@ -55,7 +55,14 @@ class SessionRepository(
                 archivedLimit = ARCHIVED_SYNC_LIMIT.takeIf { includeArchived },
             )
             val allSessions = lineageEnricher.enrich(response.sessions.orEmpty()) { id ->
-                client.sessionMetadata(id).session
+                val original = response.sessions.orEmpty().first { it.sessionId == id }
+                try {
+                    val report = client.compressionLineageReport(id)
+                    if (report.found == true && report.sessionId == id) {
+                        confirmCompressionReport(original, response.sessions.orEmpty(), report)
+                    } else client.sessionMetadata(id).session
+                } catch (error: CancellationException) { throw error }
+                catch (_: Exception) { client.sessionMetadata(id).session }
             }
             val sessions = allSessions.filter { includeArchived || it.archived != true }
             val entities = allSessions.mapNotNull { CachedSessionEntity.from(serverUrl, it, now) }

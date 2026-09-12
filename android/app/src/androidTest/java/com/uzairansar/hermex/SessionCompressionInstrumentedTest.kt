@@ -42,7 +42,9 @@ class SessionCompressionInstrumentedTest {
         override fun after() { server?.close() }
     }).around(compose)
 
-    @Test fun rendersOneLinePreservesLiveNavigationAndCanRevealHistory() {
+    @Test fun rendersOneLinePreservesLiveNavigationAndCanRevealHistory() = runScenario(false)
+    @Test fun missingRedirectAndCrossSurfaceLifecycleStillGroup() = runScenario(true)
+    private fun runScenario(lifecycle: Boolean) {
         val requests=CopyOnWriteArrayList<String>()
         val mock=MockWebServer().also { server=it }
         fun json(body:String)=MockResponse.Builder().code(200).body(body).build()
@@ -53,11 +55,19 @@ class SessionCompressionInstrumentedTest {
                     "/api/projects" -> json("""{"projects":[]}""")
                     "/api/profiles" -> json("""{"profiles":[],"single_profile_mode":true}""")
                     "/api/sessions" -> json("""{"sessions":[
-                        {"session_id":"old","title":"Workshop discussion","last_message_at":1},
-                        {"session_id":"middle","title":"Workshop discussion","parent_session_id":"old","last_message_at":2},
-                        {"session_id":"tip","title":"Workshop discussion","parent_session_id":"middle","last_message_at":3,"is_streaming":true,"active_stream_id":"fixture-stream"},
+                        {"session_id":"old","title":"Workshop discussion","last_message_at":1,"raw_source":"desktop"},
+                        {"session_id":"middle","title":"Workshop discussion","parent_session_id":"old","last_message_at":2,"raw_source":"webui"},
+                        {"session_id":"tip","title":"Workshop discussion","parent_session_id":"middle","last_message_at":3,"is_streaming":true,"active_stream_id":"fixture-stream","raw_source":"webui"},
                         {"session_id":"independent","title":"Independent conversation","last_message_at":4}
                     ],"archived_count":0}""")
+                    "/api/session/lineage/report" -> {
+                        if (!lifecycle) MockResponse.Builder().code(404).body("{}").build() else {
+                            val id=request.url.queryParameter("session_id")
+                            val next=if(id=="old") "middle" else "tip"
+                            val source=if(id=="old") "desktop" else "webui"
+                            json("""{"found":true,"session_id":"$id","manual_review":false,"total_segments":1,"segments":[{"session_id":"$id","source":"$source","end_reason":"compression","active":false,"updated_at":100.2}],"children":[{"session_id":"$next","source":"webui","role":"child_session","started_at":100.0}]}""")
+                        }
+                    }
                     "/api/session" -> {
                         assertEquals("0",request.url.queryParameter("messages"))
                         assertEquals("0",request.url.queryParameter("resolve_model"))

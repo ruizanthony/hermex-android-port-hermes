@@ -24,7 +24,8 @@ internal fun List<SessionSummary>.collapseCompressionSegments(matchingIds: Set<S
             val second = rows[b] ?: return
             if (protected(first) || protected(second)) return
             if (!first.rawSource.isNullOrBlank() && !second.rawSource.isNullOrBlank() &&
-                !first.rawSource.equals(second.rawSource, true)) return
+                !first.rawSource.equals(second.rawSource, true) &&
+                !(first.rawSource in setOf("desktop", "webui") && second.rawSource in setOf("desktop", "webui"))) return
             roots[root(a)] = root(b)
         }
         // A server-projected root is evidence; a plain parent_session_id is not.
