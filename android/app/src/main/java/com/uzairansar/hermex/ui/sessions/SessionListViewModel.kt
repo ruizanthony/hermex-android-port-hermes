@@ -138,7 +138,7 @@ data class SessionListUiState(
             val sourceFiltered = archiveFiltered.filter { showCliSessions || it.isCliSession != true }
                 .filter { sessionRowDisplaySettings.showCronSessions || !it.isCronSession }
                 .filter { showClaudeCodeSessions || !it.isClaudeCodeSession }
-                .filter { sessionRowDisplaySettings.showSubagentSessions || !it.isDelegatedSubagentSession }
+                .filter { sessionRowDisplaySettings.showSubagentSessions || !it.isListSubagent }
             val projectFiltered = selectedProjectId?.let { projectId ->
                 sourceFiltered.filter { it.projectId == projectId }
             } ?: sourceFiltered
@@ -187,7 +187,7 @@ data class SessionListUiState(
             .filter { it.archived != true && it.isCronSession }
             .filter { showCliSessions || it.isCliSession != true }
             .filter { showClaudeCodeSessions || !it.isClaudeCodeSession }
-            .filter { sessionRowDisplaySettings.showSubagentSessions || !it.isDelegatedSubagentSession }
+            .filter { sessionRowDisplaySettings.showSubagentSessions || !it.isListSubagent }
             .filter { query.isEmpty() || it.searchableText.contains(query) }
             .toList()
             .sortedForSessionList()

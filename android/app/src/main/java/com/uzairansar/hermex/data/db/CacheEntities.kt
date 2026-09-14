@@ -43,6 +43,7 @@ data class CachedSessionEntity(
     val preCompressionSnapshot: Boolean? = null,
     val continuationSessionId: String? = null,
     val lineageRootId: String? = null,
+    val confirmedDelegationParentId: String? = null,
     @ColumnInfo(name = "readOnly") val explicitReadOnlyFlag: Boolean? = null,
     @ColumnInfo(name = "isReadOnly") val alternateReadOnlyFlag: Boolean? = null,
     val cachedAtEpochMillis: Long,
@@ -77,6 +78,7 @@ data class CachedSessionEntity(
         preCompressionSnapshot = preCompressionSnapshot,
         continuationSessionId = continuationSessionId,
         lineageRootId = lineageRootId,
+        confirmedDelegationParentId = confirmedDelegationParentId,
         readOnly = explicitReadOnlyFlag,
         isReadOnly = alternateReadOnlyFlag,
     )
@@ -117,6 +119,7 @@ data class CachedSessionEntity(
                 preCompressionSnapshot = session.preCompressionSnapshot,
                 continuationSessionId = session.continuationSessionId,
                 lineageRootId = session.lineageRootId,
+                confirmedDelegationParentId = session.confirmedDelegationParentId,
                 explicitReadOnlyFlag = session.readOnly,
                 alternateReadOnlyFlag = session.isReadOnly,
                 cachedAtEpochMillis = now,

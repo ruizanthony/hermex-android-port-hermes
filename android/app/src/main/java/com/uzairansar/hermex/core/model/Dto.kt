@@ -186,10 +186,14 @@ data class SessionSummary(
     @SerialName("pre_compression_snapshot") val preCompressionSnapshot: Boolean? = null,
     @SerialName("continuation_session_id") val continuationSessionId: String? = null,
     @SerialName("_lineage_root_id") val lineageRootId: String? = null,
+    val confirmedDelegationParentId: String? = null,
 ) {
     val stableId: String
         get() = sessionId?.takeIf { it.isNotBlank() }
             ?: "session-${title.orEmpty()}-${createdAt ?: updatedAt ?: lastMessageAt ?: 0.0}"
+
+    val isListSubagent: Boolean
+        get() = isDelegatedSubagentSession || (!confirmedDelegationParentId.isNullOrBlank() && confirmedDelegationParentId == parentSessionId && relationshipType == "child_session")
 
     val isDelegatedSubagentSession: Boolean
         get() = listOfNotNull(sourceTag, rawSource, sessionSource, sourceLabel)

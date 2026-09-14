@@ -36,6 +36,9 @@ class HermexDatabaseMigrationInstrumentedTest {
     @Test
     fun migrationFromTwoPreservesRowsAndAddsCompressionMetadataColumns() = verifyMigration(2)
 
+    @Test
+    fun migrationFromThreePreservesRowsAndAddsDelegationProof() = verifyMigration(3)
+
     private fun verifyMigration(version: Int) {
         SQLiteDatabase.openOrCreateDatabase(databaseFile, null).use { db ->
             db.execSQL(CREATE_V1_SESSIONS)
@@ -51,9 +54,13 @@ class HermexDatabaseMigrationInstrumentedTest {
                     "VALUES (?, ?, ?, ?, ?, ?)",
                 arrayOf<Any>("server::session", "https://server/", "session", "Preserved", 1L, Long.MAX_VALUE),
             )
-            if (version == 2) {
+            if (version >= 2) {
                 listOf("isCliSession", "readOnly", "isReadOnly").forEach { db.execSQL("ALTER TABLE cached_sessions ADD COLUMN $it INTEGER") }
                 listOf("sourceTag", "rawSource", "sessionSource", "sourceLabel", "parentSessionId", "relationshipType").forEach { db.execSQL("ALTER TABLE cached_sessions ADD COLUMN $it TEXT") }
+            }
+            if (version >= 3) {
+                db.execSQL("ALTER TABLE cached_sessions ADD COLUMN preCompressionSnapshot INTEGER")
+                listOf("continuationSessionId", "lineageRootId").forEach { db.execSQL("ALTER TABLE cached_sessions ADD COLUMN $it TEXT") }
             }
             db.version = version
         }
@@ -84,6 +91,7 @@ class HermexDatabaseMigrationInstrumentedTest {
                             "preCompressionSnapshot",
                             "continuationSessionId",
                             "lineageRootId",
+                            "confirmedDelegationParentId",
                         ),
                     ),
                 )

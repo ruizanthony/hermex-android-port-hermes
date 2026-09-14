@@ -16,7 +16,7 @@ internal fun List<SessionSummary>.collapseCompressionSegments(matchingIds: Set<S
             }
             return current
         }
-        fun protected(row: SessionSummary): Boolean = row.isDelegatedSubagentSession ||
+        fun protected(row: SessionSummary): Boolean = row.isListSubagent ||
             row.sessionSource.equals("fork", true) ||
             row.relationshipType?.lowercase() in setOf("fork", "branch", "subagent")
         fun join(a: String, b: String) {

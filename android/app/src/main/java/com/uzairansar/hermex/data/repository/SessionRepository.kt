@@ -39,6 +39,7 @@ class SessionRepository(
     private val serverUrl = client.baseUrl.toString()
     private val lineageEnricher = SessionLineageEnricher()
     private val sparseLineage = SparseLineageResolver()
+    private val delegations = DelegationEnricher()
 
     suspend fun loadCachedSessions(includeArchived: Boolean = false): SessionPage? =
         loadCachedSessions(
@@ -51,6 +52,10 @@ class SessionRepository(
         val cacheGeneration = cacheOwnership.generation(serverUrl)
         val now = System.currentTimeMillis()
         return try {
+            val prior = cacheOwnership.readIfCurrent(serverUrl, cacheGeneration) {
+                cacheDao.cachedSessions(serverUrl, now, includeArchived = true).map { it.toSummary() }
+            }.orEmpty()
+            delegations.restore(prior)
             val response = client.sessions(
                 includeArchived = includeArchived,
                 archivedLimit = ARCHIVED_SYNC_LIMIT.takeIf { includeArchived },
@@ -65,8 +70,11 @@ class SessionRepository(
                 } catch (error: CancellationException) { throw error }
                 catch (_: Exception) { client.sessionMetadata(id).session }
             }
-            val allSessions = sparseLineage.enrich(directlyLinked,
+            val compressionLinked = sparseLineage.enrich(directlyLinked,
                 { client.sessionMetadata(it).session }, { client.compressionLineageReport(it) })
+            val allSessions = delegations.enrich(compressionLinked) {
+                client.session(it, includeMessages = true, limit = 2_000).session
+            }
             val sessions = allSessions.filter { includeArchived || it.archived != true }
             val entities = allSessions.mapNotNull { CachedSessionEntity.from(serverUrl, it, now) }
             val archivedReturned = allSessions.count { it.archived == true }
