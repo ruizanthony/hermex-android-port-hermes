@@ -187,6 +187,8 @@ data class SessionSummary(
     @SerialName("continuation_session_id") val continuationSessionId: String? = null,
     @SerialName("_lineage_root_id") val lineageRootId: String? = null,
     val confirmedDelegationParentId: String? = null,
+    val compressionTipArchived: Boolean? = null,
+    val compressionArchiveCheckedAt: Long? = null,
 ) {
     val stableId: String
         get() = sessionId?.takeIf { it.isNotBlank() }

@@ -7,6 +7,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SparseLineageTest {
+    @Test fun archivedHiddenContinuationControlsOnlyProvenConversation() = runTest {
+        val old=SessionSummary(sessionId="old",profile="default",rawSource="desktop",archived=false)
+        var tip=SessionSummary(sessionId="tip",profile="default",rawSource="desktop",archived=true)
+        val human=SessionSummary(sessionId="human",title="Desktop Session",profile="default")
+        val report=CompressionReport(found=true,sessionId="old",manualReview=false,totalSegments=1,
+            segments=listOf(CompressionReportRow(sessionId="old",source="desktop",endReason="compression",active=false,updatedAt=100.2)),
+            children=listOf(CompressionReportRow(sessionId="tip",source="desktop",role="child_session",startedAt=100.0)))
+        val resolver=SparseLineageResolver()
+        suspend fun resolve(rows:List<SessionSummary>)=resolver.enrich(rows,{tip},{if(it=="old") report else CompressionReport(found=false)})
+        val output=resolve(listOf(old,human))
+        assertEquals(listOf("human"),com.uzairansar.hermex.ui.sessions.SessionListUiState(sessions=output).visibleSessions.map { it.sessionId })
+        assertFalse(output.first().archived==true) // raw server identity stays intact
+        val cache=output.map { com.uzairansar.hermex.data.db.CachedSessionEntity.from("https://fixture/",it)!!.toSummary() }
+        assertEquals(listOf("human"),com.uzairansar.hermex.ui.sessions.SessionListUiState(sessions=cache).visibleSessions.map { it.sessionId })
+        val archived=resolve(listOf(old,tip,human))
+        assertEquals(listOf("tip"),com.uzairansar.hermex.ui.sessions.SessionListUiState(sessions=archived,showArchived=true).visibleSessions.map { it.sessionId })
+        tip=tip.copy(archived=false)
+        val restored=resolve(listOf(old,tip,human))
+        assertEquals(2,com.uzairansar.hermex.ui.sessions.SessionListUiState(sessions=restored).visibleSessions.size)
+    }
+
     @Test fun refusesCrossProfileAndExplicitForkEvenWithWarmProof() = runTest {
         val old=SessionSummary(sessionId="old",profile="default",rawSource="webui")
         val tip=SessionSummary(sessionId="tip",profile="default",rawSource="webui",parentSessionId="old")

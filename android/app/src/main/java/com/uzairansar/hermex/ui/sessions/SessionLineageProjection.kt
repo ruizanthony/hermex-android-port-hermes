@@ -2,10 +2,22 @@ package com.uzairansar.hermex.ui.sessions
 
 import com.uzairansar.hermex.core.model.SessionSummary
 
+/** Archive is a display property of a proven chain, never an update to raw rows. */
+internal fun List<SessionSummary>.conversationArchiveStates(now:Long=System.currentTimeMillis()):Map<String,Boolean> {
+    fun key(row:SessionSummary)= (row.profile?.trim().takeUnless { it.isNullOrEmpty() } ?: "default") to (row.lineageRootId ?: row.sessionId)
+    val live=filter { it.isStreaming==true || !it.activeStreamId.isNullOrBlank() }.map(::key).toSet()
+    return associate { row ->
+        val age=row.compressionArchiveCheckedAt?.let { now-it }
+        val proven=!row.lineageRootId.isNullOrBlank() && age!=null && age in 0..60_000
+        row.stableId to (key(row) !in live && if(proven) row.compressionTipArchived ?: (row.archived==true) else row.archived==true)
+    }
+}
+
 /** Display-only projection. Never uses titles or ordinary parenthood as identity. */
 internal fun List<SessionSummary>.collapseCompressionSegments(matchingIds: Set<String>? = null): List<SessionSummary> {
     val groups = mutableListOf<List<SessionSummary>>()
-    groupBy { it.profile.orEmpty() to (it.archived == true) }.values.forEach { scoped ->
+    val archiveStates=conversationArchiveStates()
+    groupBy { (it.profile?.trim().takeUnless { p -> p.isNullOrEmpty() } ?: "default") to archiveStates[it.stableId] }.values.forEach { scoped ->
         val rows = scoped.filter { !it.sessionId.isNullOrBlank() }.associateBy { it.sessionId!! }
         val roots = rows.keys.associateWith { it }.toMutableMap()
         fun root(id: String): String {
@@ -62,6 +74,7 @@ internal fun List<SessionSummary>.collapseCompressionSegments(matchingIds: Set<S
         // Open the actual active row. Never copy another row's stream ID onto it.
         val representative = members.maxWithOrNull(
             compareBy<SessionSummary> { it.isStreaming == true || !it.activeStreamId.isNullOrBlank() }
+                .thenBy { candidate -> members.any { it.lineageRootId==candidate.sessionId } }
                 .thenBy { it.preCompressionSnapshot != true }
                 .thenBy { maxOf(it.lastMessageAt ?: 0.0, it.updatedAt ?: 0.0, it.createdAt ?: 0.0) }
                 .thenBy { it.sessionId.orEmpty() },

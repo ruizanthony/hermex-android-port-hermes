@@ -12,6 +12,16 @@ class DelegationEvidenceTest {
     ))
     private val detail = SessionDetail(sessionId="child", createdAt=100.5, messages=listOf(ChatMessage(role="user",content="Check fixture",timestamp=100.4)))
 
+    @Test fun genericOtherSourceStillRequiresRealDelegationEvidence() = kotlinx.coroutines.test.runTest {
+        for (source in listOf("other", " OTHER ")) {
+            val row=child.copy(sessionSource=source)
+            val confirmed=DelegationEnricher().enrich(listOf(row)) { if(it=="child") detail else parent }
+            assertTrue(confirmed.single().isListSubagent)
+            val unknown=DelegationEnricher().enrich(listOf(row)) { null }
+            assertFalse(unknown.single().isListSubagent)
+        }
+    }
+
     @Test fun restoresOnlyMatchingCachedProofAndBoundsProgressiveReads() = kotlinx.coroutines.test.runTest {
         val enricher = DelegationEnricher()
         enricher.restore(listOf(child.copy(confirmedDelegationParentId="parent")))

@@ -130,11 +130,8 @@ data class SessionListUiState(
 ) {
     val visibleSessions: List<SessionSummary>
         get() {
-            val archiveFiltered = if (showArchived) {
-                sessions.filter { it.archived == true }
-            } else {
-                sessions.filter { it.archived != true }
-            }
+            val archiveStates=sessions.conversationArchiveStates()
+            val archiveFiltered=sessions.filter { archiveStates[it.stableId]==showArchived }
             val sourceFiltered = archiveFiltered.filter { showCliSessions || it.isCliSession != true }
                 .filter { sessionRowDisplaySettings.showCronSessions || !it.isCronSession }
                 .filter { showClaudeCodeSessions || !it.isClaudeCodeSession }

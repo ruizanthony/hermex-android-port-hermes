@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [CachedSessionEntity::class, CachedMessageEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class HermexDatabase : RoomDatabase() {
@@ -21,8 +21,15 @@ abstract class HermexDatabase : RoomDatabase() {
             HermexDatabase::class.java,
             "hermex.db",
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
+
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cached_sessions ADD COLUMN compressionTipArchived INTEGER")
+                db.execSQL("ALTER TABLE cached_sessions ADD COLUMN compressionArchiveCheckedAt INTEGER")
+            }
+        }
 
         internal val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {

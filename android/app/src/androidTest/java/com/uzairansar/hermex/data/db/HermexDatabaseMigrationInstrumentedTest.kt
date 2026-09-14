@@ -39,6 +39,9 @@ class HermexDatabaseMigrationInstrumentedTest {
     @Test
     fun migrationFromThreePreservesRowsAndAddsDelegationProof() = verifyMigration(3)
 
+    @Test
+    fun migrationFromFourPreservesRowsAndAddsCompressionArchiveProof() = verifyMigration(4)
+
     private fun verifyMigration(version: Int) {
         SQLiteDatabase.openOrCreateDatabase(databaseFile, null).use { db ->
             db.execSQL(CREATE_V1_SESSIONS)
@@ -57,6 +60,9 @@ class HermexDatabaseMigrationInstrumentedTest {
             if (version >= 2) {
                 listOf("isCliSession", "readOnly", "isReadOnly").forEach { db.execSQL("ALTER TABLE cached_sessions ADD COLUMN $it INTEGER") }
                 listOf("sourceTag", "rawSource", "sessionSource", "sourceLabel", "parentSessionId", "relationshipType").forEach { db.execSQL("ALTER TABLE cached_sessions ADD COLUMN $it TEXT") }
+            }
+            if (version >= 4) {
+                db.execSQL("ALTER TABLE cached_sessions ADD COLUMN confirmedDelegationParentId TEXT")
             }
             if (version >= 3) {
                 db.execSQL("ALTER TABLE cached_sessions ADD COLUMN preCompressionSnapshot INTEGER")
@@ -92,6 +98,8 @@ class HermexDatabaseMigrationInstrumentedTest {
                             "continuationSessionId",
                             "lineageRootId",
                             "confirmedDelegationParentId",
+                            "compressionTipArchived",
+                            "compressionArchiveCheckedAt",
                         ),
                     ),
                 )

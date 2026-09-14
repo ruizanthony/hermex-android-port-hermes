@@ -12,7 +12,7 @@ internal class SparseLineageResolver {
     private val proofs=mutableMapOf<Pair<String,String>,Proof>()
     private val mutex=Mutex()
     private fun profile(row:SessionSummary)=row.profile?.takeIf { it.isNotBlank() } ?: "default"
-    private fun eligible(row:SessionSummary)=row.archived != true && !row.isDelegatedSubagentSession &&
+    private fun eligible(row:SessionSummary)=!row.isListSubagent &&
         !row.sessionSource.equals("fork",true) && row.relationshipType?.lowercase() !in setOf("fork","branch","subagent") &&
         row.rawSource in setOf("desktop","webui")
     suspend fun enrich(rows:List<SessionSummary>,metadata:suspend(String)->SessionSummary?,report:suspend(String)->CompressionReport):List<SessionSummary> {
@@ -21,11 +21,23 @@ internal class SparseLineageResolver {
             val now=System.currentTimeMillis()
             proofs.entries.removeAll { now-it.value.checkedAt>60_000 }
             val byId=rows.associateBy { it.sessionId }
+            // Mutable archive/stream state is read afresh each pass, not from link cache.
+            val observed=mutableMapOf<String?,SessionSummary?>().apply { putAll(byId) }
+            suspend fun fresh(id:String):SessionSummary? {
+                if (!observed.containsKey(id)) observed[id]=metadata(id)
+                return observed[id]
+            }
             suspend fun childOf(parent:SessionSummary):SessionSummary? {
                 val id=parent.sessionId ?: return null
                 if(!eligible(parent)) return null
                 val key=profile(parent) to id
-                proofs[key]?.let { return it.child }
+                proofs[key]?.let { proof ->
+                    val cached=proof.child ?: return null
+                    val child=fresh(cached.sessionId!!) ?: return null
+                    if (!eligible(child) || profile(child)!=profile(parent) ||
+                        (child.parentSessionId!=null && child.parentSessionId!=id)) return null
+                    return child.copy(parentSessionId=id,profile=profile(child))
+                }
                 val r=report(id)
                 val ended=r.segments.singleOrNull()
                 val end=ended?.updatedAt
@@ -35,7 +47,7 @@ internal class SparseLineageResolver {
                 val candidate=r.children.filter { c -> c.startedAt?.let { it.isFinite() && it>0 && abs(it-end)<=5 }==true }.singleOrNull()
                 val nextId=candidate?.sessionId
                 if(nextId==null || candidate.role!="child_session" || nextId==id) { proofs[key]=Proof(null,now);return null }
-                val child=byId[nextId] ?: metadata(nextId)
+                val child=fresh(nextId)
                 if(child?.sessionId!=nextId || !eligible(child) || profile(child)!=profile(parent) ||
                     (child.parentSessionId!=null && child.parentSessionId!=id)) { proofs[key]=Proof(null,now);return null }
                 // The report attests direct parentage when legacy metadata omits it.
@@ -47,7 +59,7 @@ internal class SparseLineageResolver {
                 return result
             }
             withTimeoutOrNull(6_000) {
-                for(row in rows) {
+                for(row in rows.sortedBy { proofs[profile(it) to it.sessionId]?.checkedAt ?: Long.MIN_VALUE }) {
                     var current=row
                     val seen=mutableSetOf<String>()
                     try {
@@ -65,16 +77,17 @@ internal class SparseLineageResolver {
                 val seen=mutableSetOf<String>()
                 while(eligible(current) && current.sessionId!=null && seen.add(current.sessionId!!)) {
                     val next=proofs[profile(current) to current.sessionId!!]?.child ?: break
-                    val fresh=byId[next.sessionId] ?: next
+                    val fresh=observed[next.sessionId] ?: break
                     if(!eligible(fresh) || profile(fresh)!=profile(row) ||
                         (fresh.parentSessionId!=null && fresh.parentSessionId!=current.sessionId)) break
-                    current=fresh
+                    current=fresh.copy(parentSessionId=current.sessionId,profile=profile(fresh))
                 }
-                if(current.sessionId!=row.sessionId && current.sessionId !in seen && !current.sessionId.isNullOrBlank())
-                    row.copy(lineageRootId=current.sessionId)
-                else if(current.sessionId!=row.sessionId && proofs[profile(current) to current.sessionId]?.child==null)
-                    row.copy(lineageRootId=current.sessionId)
-                else row
+                val reached=proofs[profile(current) to current.sessionId]
+                val linked=current.sessionId!=row.sessionId && reached!=null && reached.child==null
+                if(linked) row.copy(lineageRootId=current.sessionId,
+                    compressionTipArchived=current.archived,
+                    compressionArchiveCheckedAt=now)
+                else row.copy(compressionTipArchived=null,compressionArchiveCheckedAt=null)
             }
         } finally { mutex.unlock() }
     }

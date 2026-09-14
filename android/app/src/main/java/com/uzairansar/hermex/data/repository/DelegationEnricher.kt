@@ -15,7 +15,7 @@ internal class DelegationEnricher(private val now: () -> Long = System::currentT
     private fun key(row: SessionSummary) = Key(row.sessionId, row.parentSessionId, row.profile, row.createdAt)
     private fun eligible(row: SessionSummary) = !row.sessionId.isNullOrBlank() && !row.parentSessionId.isNullOrBlank() &&
         row.relationshipType == "child_session" && row.rawSource in setOf("desktop", "cli") &&
-        row.sessionSource.isNullOrBlank() && row.preCompressionSnapshot != true &&
+        row.sessionSource?.trim()?.lowercase().orEmpty() in setOf("", "other") && row.preCompressionSnapshot != true &&
         row.continuationSessionId.isNullOrBlank() && row.lineageRootId.isNullOrBlank()
 
     suspend fun restore(rows: List<SessionSummary>) = mutex.withLock {
