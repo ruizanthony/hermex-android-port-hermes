@@ -49,6 +49,20 @@ class DelegationEvidenceTest {
         assertFalse(cached.isSessionReadOnly) // hiding does not change capabilities
     }
 
+    @Test fun detailContradictionsCannotBecomeCachedEvidence() = kotlinx.coroutines.test.runTest {
+        for (contradiction in listOf(
+            detail.copy(sessionSource="fork"), detail.copy(sessionSource="manual-branch"),
+            detail.copy(relationshipType="fork"), detail.copy(relationshipType="branch"),
+            detail.copy(parentSessionId="another-parent")
+        )) {
+            assertFalse(confirmsDelegation(child, contradiction, parent))
+            val enricher = DelegationEnricher()
+            val rows = enricher.enrich(listOf(child)) { if (it=="child") contradiction else parent }
+            assertFalse(rows.single().isListSubagent)
+            assertNull(rows.single().confirmedDelegationParentId)
+            assertFalse(enricher.enrich(listOf(child)) { error("negative evidence is cached") }.single().isListSubagent)
+        }
+    }
     @Test fun matchesActualParentDelegationInsteadOfDesktopTitle() {
         assertTrue(confirmsDelegation(child, detail, parent))
         assertTrue(confirmsDelegation(child.copy(title="Any title"), detail, parent))

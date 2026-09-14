@@ -12,6 +12,10 @@ internal fun confirmsDelegation(row: SessionSummary, child: SessionDetail, paren
         row.sessionId == parent.sessionId || row.relationshipType != "child_session" ||
         row.preCompressionSnapshot == true || !row.continuationSessionId.isNullOrBlank() ||
         !row.lineageRootId.isNullOrBlank() || row.sessionSource.equals("fork", true)) return false
+    if (listOfNotNull(child.sessionSource, child.relationshipType).any {
+            it.contains("fork", ignoreCase = true) || it.contains("branch", ignoreCase = true)
+        }) return false
+    if (!child.parentSessionId.isNullOrBlank() && child.parentSessionId != row.parentSessionId) return false
     fun profile(value: String?) = value?.trim().takeUnless { it.isNullOrEmpty() } ?: "default"
     if (profile(row.profile) != profile(child.profile) || profile(row.profile) != profile(parent.profile)) return false
     val created = row.createdAt?.takeIf { it.isFinite() } ?: return false
