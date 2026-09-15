@@ -1364,6 +1364,7 @@
     <string name="l10n_663da9347806aa18" formatted="false">"파일 변경 사항"</string>
     <string name="l10n_96e578211aa29531" formatted="false">"필터"</string>
     <string name="l10n_1ce5eec83a4626a6" formatted="false">"Hermex? ???? ?? ???? ? ? ????. ????? ? ??? ??? ??, ??? ?? ? ??? ?? ??? ?????."</string>
+    <string name="l10n_94652a06792c94f8" formatted="false">"바로가기 숨기기"</string>
     <string name="l10n_7f896a7c24b031ad" formatted="false">"호환되지 않는 Kanban 응답"</string>
     <string name="l10n_7a4e49bc1d9b6a0e" formatted="false">"원격 이미지 불러오기"</string>
     <string name="l10n_2563f2298c5e7405" formatted="false">"이름: 값"</string>
@@ -1380,6 +1381,7 @@
     <string name="l10n_ed2a7acac11f4394" formatted="false">"서버 URL, 사용자 지정 헤더 및 쿠키는 Android 암호화 저장소에 저장됩니다."</string>
     <string name="l10n_09ca55ca52d207f2" formatted="false">"공유"</string>
     <string name="l10n_12f98a70d6319400" formatted="false">"응답 발췌 표시"</string>
+    <string name="l10n_88b662e97d9b132e" formatted="false">"바로가기 표시"</string>
     <string name="l10n_7cdb45a0a913f5a9" formatted="false">"????? ?????."</string>
     <string name="l10n_ca6d0e3aaa7d6cc0" formatted="false">"스테이징"</string>
     <string name="l10n_3e44c920427e845d" formatted="false">"전환"</string>

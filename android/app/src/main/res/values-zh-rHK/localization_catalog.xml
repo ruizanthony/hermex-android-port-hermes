@@ -1364,6 +1364,7 @@
     <string name="l10n_663da9347806aa18" formatted="false">"檔案變更"</string>
     <string name="l10n_96e578211aa29531" formatted="false">"篩選條件"</string>
     <string name="l10n_1ce5eec83a4626a6" formatted="false">"Hermex ??????????????????????????????? Cookie ??????"</string>
+    <string name="l10n_94652a06792c94f8" formatted="false">"隱藏捷徑"</string>
     <string name="l10n_7f896a7c24b031ad" formatted="false">"不相容的 Kanban 回應"</string>
     <string name="l10n_7a4e49bc1d9b6a0e" formatted="false">"載入遠端圖片"</string>
     <string name="l10n_2563f2298c5e7405" formatted="false">"名稱：值"</string>
@@ -1380,6 +1381,7 @@
     <string name="l10n_ed2a7acac11f4394" formatted="false">"伺服器 URL、自訂標頭和 Cookie 會儲存在 Android 加密儲存空間中。"</string>
     <string name="l10n_09ca55ca52d207f2" formatted="false">"分享"</string>
     <string name="l10n_12f98a70d6319400" formatted="false">"顯示回應摘要"</string>
+    <string name="l10n_88b662e97d9b132e" formatted="false">"顯示捷徑"</string>
     <string name="l10n_7cdb45a0a913f5a9" formatted="false">"?????"</string>
     <string name="l10n_ca6d0e3aaa7d6cc0" formatted="false">"加入暫存區"</string>
     <string name="l10n_3e44c920427e845d" formatted="false">"切換"</string>

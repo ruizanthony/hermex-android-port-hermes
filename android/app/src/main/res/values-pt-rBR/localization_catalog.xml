@@ -1364,6 +1364,7 @@
     <string name="l10n_663da9347806aa18" formatted="false">"Alterações de arquivos"</string>
     <string name="l10n_96e578211aa29531" formatted="false">"Filtros"</string>
     <string name="l10n_1ce5eec83a4626a6" formatted="false">"O Hermex n?o conseguiu abrir os dados criptografados da conta. A redefini??o remover? deste dispositivo os servidores salvos, cookies de login e cabe?alhos personalizados."</string>
+    <string name="l10n_94652a06792c94f8" formatted="false">"Ocultar atalhos"</string>
     <string name="l10n_7f896a7c24b031ad" formatted="false">"Resposta Kanban incompatível"</string>
     <string name="l10n_7a4e49bc1d9b6a0e" formatted="false">"Carregar imagem remota"</string>
     <string name="l10n_2563f2298c5e7405" formatted="false">"Nome: valor"</string>
@@ -1380,6 +1381,7 @@
     <string name="l10n_ed2a7acac11f4394" formatted="false">"URLs de servidor, cabeçalhos personalizados e cookies são armazenados no armazenamento criptografado do Android."</string>
     <string name="l10n_09ca55ca52d207f2" formatted="false">"Compartilhar"</string>
     <string name="l10n_12f98a70d6319400" formatted="false">"Mostrar trechos da resposta"</string>
+    <string name="l10n_88b662e97d9b132e" formatted="false">"Mostrar atalhos"</string>
     <string name="l10n_7cdb45a0a913f5a9" formatted="false">"Falha ao entrar."</string>
     <string name="l10n_ca6d0e3aaa7d6cc0" formatted="false">"Preparar"</string>
     <string name="l10n_3e44c920427e845d" formatted="false">"Alternar"</string>

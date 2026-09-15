@@ -1364,6 +1364,7 @@
     <string name="l10n_663da9347806aa18" formatted="false">"ファイルの変更"</string>
     <string name="l10n_96e578211aa29531" formatted="false">"フィルター"</string>
     <string name="l10n_1ce5eec83a4626a6" formatted="false">"Hermex ??????????????????????????????????????????????????????? Cookie?????????????????"</string>
+    <string name="l10n_94652a06792c94f8" formatted="false">"ショートカットを非表示"</string>
     <string name="l10n_7f896a7c24b031ad" formatted="false">"互換性のない Kanban 応答"</string>
     <string name="l10n_7a4e49bc1d9b6a0e" formatted="false">"リモート画像を読み込む"</string>
     <string name="l10n_2563f2298c5e7405" formatted="false">"名前: 値"</string>
@@ -1380,6 +1381,7 @@
     <string name="l10n_ed2a7acac11f4394" formatted="false">"サーバーURL、カスタムヘッダー、CookieはAndroidの暗号化ストレージに保存されます。"</string>
     <string name="l10n_09ca55ca52d207f2" formatted="false">"共有"</string>
     <string name="l10n_12f98a70d6319400" formatted="false">"応答の抜粋を表示"</string>
+    <string name="l10n_88b662e97d9b132e" formatted="false">"ショートカットを表示"</string>
     <string name="l10n_7cdb45a0a913f5a9" formatted="false">"?????????????"</string>
     <string name="l10n_ca6d0e3aaa7d6cc0" formatted="false">"ステージ"</string>
     <string name="l10n_3e44c920427e845d" formatted="false">"切り替え"</string>

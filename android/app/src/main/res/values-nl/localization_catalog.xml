@@ -1364,6 +1364,7 @@
     <string name="l10n_663da9347806aa18" formatted="false">"Bestandswijzigingen"</string>
     <string name="l10n_96e578211aa29531" formatted="false">"Filters"</string>
     <string name="l10n_1ce5eec83a4626a6" formatted="false">"Hermex kon de versleutelde accountgegevens niet openen. Bij opnieuw instellen worden opgeslagen servers, aanmeldcookies en aangepaste headers van dit apparaat verwijderd."</string>
+    <string name="l10n_94652a06792c94f8" formatted="false">"Snelkoppelingen verbergen"</string>
     <string name="l10n_7f896a7c24b031ad" formatted="false">"Incompatibel Kanban-antwoord"</string>
     <string name="l10n_7a4e49bc1d9b6a0e" formatted="false">"Externe afbeelding laden"</string>
     <string name="l10n_2563f2298c5e7405" formatted="false">"Naam: waarde"</string>
@@ -1380,6 +1381,7 @@
     <string name="l10n_ed2a7acac11f4394" formatted="false">"Server-URL's, aangepaste headers en cookies worden opgeslagen in versleutelde Android-opslag."</string>
     <string name="l10n_09ca55ca52d207f2" formatted="false">"Delen"</string>
     <string name="l10n_12f98a70d6319400" formatted="false">"Antwoordfragmenten tonen"</string>
+    <string name="l10n_88b662e97d9b132e" formatted="false">"Snelkoppelingen tonen"</string>
     <string name="l10n_7cdb45a0a913f5a9" formatted="false">"Aanmelden mislukt."</string>
     <string name="l10n_ca6d0e3aaa7d6cc0" formatted="false">"Stagen"</string>
     <string name="l10n_3e44c920427e845d" formatted="false">"Wisselen"</string>

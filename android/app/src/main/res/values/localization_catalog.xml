@@ -1364,6 +1364,7 @@
     <string name="l10n_663da9347806aa18" formatted="false">"File changes"</string>
     <string name="l10n_96e578211aa29531" formatted="false">"Filters"</string>
     <string name="l10n_1ce5eec83a4626a6" formatted="false">"Hermex could not open its encrypted account data. Resetting removes saved servers, sign-in cookies, and custom headers from this device."</string>
+    <string name="l10n_94652a06792c94f8" formatted="false">"Hide shortcuts"</string>
     <string name="l10n_7f896a7c24b031ad" formatted="false">"Incompatible Kanban response"</string>
     <string name="l10n_7a4e49bc1d9b6a0e" formatted="false">"Load remote image"</string>
     <string name="l10n_2563f2298c5e7405" formatted="false">"Name: Value"</string>
@@ -1380,6 +1381,7 @@
     <string name="l10n_ed2a7acac11f4394" formatted="false">"Server URLs, custom headers, and cookies are stored in Android encrypted storage."</string>
     <string name="l10n_09ca55ca52d207f2" formatted="false">"Share"</string>
     <string name="l10n_12f98a70d6319400" formatted="false">"Show Response Excerpts"</string>
+    <string name="l10n_88b662e97d9b132e" formatted="false">"Show shortcuts"</string>
     <string name="l10n_7cdb45a0a913f5a9" formatted="false">"Sign in failed."</string>
     <string name="l10n_ca6d0e3aaa7d6cc0" formatted="false">"Stage"</string>
     <string name="l10n_3e44c920427e845d" formatted="false">"Switch"</string>
