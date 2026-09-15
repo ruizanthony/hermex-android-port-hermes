@@ -317,14 +317,17 @@ class SessionListViewModel(
             val snapshot = _state.value
             val requestedArchivedMode = snapshot.showArchived
             var cachedPreview: SessionPage? = null
+            // Cache-first: only a truly empty list gets the blocking spinner. With any
+            // content on screen, the network refresh runs silently in the background.
+            val showBlockingSpinner = snapshot.sessions.isEmpty()
             _state.update {
                 it.copy(
-                    isLoading = true,
+                    isLoading = showBlockingSpinner,
                     error = null,
                     notice = if (clearNotice) null else it.notice,
                 )
             }
-            if (snapshot.sessions.isEmpty()) {
+            if (showBlockingSpinner) {
                 runSuspendCatching { repository.loadCachedSessions(requestedArchivedMode) }
                     .getOrNull()
                     ?.let { cached ->
@@ -334,6 +337,7 @@ class SessionListViewModel(
                             it.copy(
                                 sessions = cached.sessions,
                                 archivedCount = cached.archivedCount,
+                                isLoading = cached.sessions.isNotEmpty().not(),
                                 isViewingCachedData = false,
                             )
                         }
@@ -440,6 +444,12 @@ class SessionListViewModel(
 
     fun toggleCompressionSegments() {
         _state.update { it.copy(showCompressionSegments = !it.showCompressionSegments) }
+    }
+
+    fun toggleUtilitySectionsCollapsed() {
+        viewModelScope.launch {
+            localSettingsRepository.setUtilitySectionsCollapsed(!_state.value.mainPageDisplaySettings.utilitySectionsCollapsed)
+        }
     }
 
     fun toggleArchived() {
@@ -590,10 +600,15 @@ class SessionListViewModel(
         if (rejectReadOnlyMutation(session)) return
         val id = session.sessionId ?: return
         val archived = session.archived != true
+        val chainIds = _state.value.sessions.chainIdsFor(session.stableId).ifEmpty { listOfNotNull(id) }
         mutate(if (archived) "Session archived." else "Session restored.") {
-            repository.archive(id, archived).mutationError("The server could not update the archive state.")
+            if (chainIds.size > 1) repository.archiveChain(chainIds, archived)
+            else repository.archive(id, archived).mutationError("The server could not update the archive state.")
         }
     }
+
+
+
 
     fun requestRename(session: SessionSummary) {
         if (rejectReadOnlyMutation(session)) return
@@ -879,7 +894,10 @@ class SessionListViewModel(
     }
 
     private fun mutate(success: String, action: suspend () -> String?) {
-        if (_state.value.isMutating || _state.value.isSwitchingProfile) return
+        if (_state.value.isMutating || _state.value.isSwitchingProfile) {
+            _state.update { it.copy(error = "An action is already running. Try again in a moment.") }
+            return
+        }
         _state.update { it.copy(isMutating = true, error = null, notice = null) }
         viewModelScope.launch {
             runSuspendCatching { action() }

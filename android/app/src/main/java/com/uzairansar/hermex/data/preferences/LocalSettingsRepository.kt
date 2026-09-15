@@ -66,6 +66,7 @@ data class MainPageDisplaySettings(
     val showInsights: Boolean = true,
     val showActiveProfile: Boolean = true,
     val showProjects: Boolean = true,
+    val utilitySectionsCollapsed: Boolean = false,
 )
 
 data class SessionIdentitySettings(
@@ -142,6 +143,7 @@ class LocalSettingsRepository(context: Context) {
             showInsights = preferences[MAIN_PAGE_SHOW_INSIGHTS] ?: true,
             showActiveProfile = preferences[MAIN_PAGE_SHOW_ACTIVE_PROFILE] ?: true,
             showProjects = preferences[MAIN_PAGE_SHOW_PROJECTS] ?: true,
+            utilitySectionsCollapsed = preferences[MAIN_PAGE_UTILITY_SECTIONS_COLLAPSED] ?: false,
         )
     }
 
@@ -367,6 +369,8 @@ class LocalSettingsRepository(context: Context) {
 
     suspend fun setShowProjectsSection(enabled: Boolean) = setBoolean(MAIN_PAGE_SHOW_PROJECTS, enabled)
 
+    suspend fun setUtilitySectionsCollapsed(collapsed: Boolean) = setBoolean(MAIN_PAGE_UTILITY_SECTIONS_COLLAPSED, collapsed)
+
     suspend fun setResponseCompletionNotificationsEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[RESPONSE_COMPLETION_NOTIFICATIONS_ENABLED] = enabled
@@ -461,6 +465,7 @@ class LocalSettingsRepository(context: Context) {
         val MAIN_PAGE_SHOW_INSIGHTS = booleanPreferencesKey("mainPage.showInsights")
         val MAIN_PAGE_SHOW_ACTIVE_PROFILE = booleanPreferencesKey("mainPage.showActiveProfile")
         val MAIN_PAGE_SHOW_PROJECTS = booleanPreferencesKey("mainPage.showProjects")
+        val MAIN_PAGE_UTILITY_SECTIONS_COLLAPSED = booleanPreferencesKey("mainPage.utilitySectionsCollapsed")
         val RESPONSE_COMPLETION_NOTIFICATIONS_ENABLED = booleanPreferencesKey("responseCompletionNotifications.isEnabled")
         val RESPONSE_COMPLETION_NOTIFICATION_PERMISSION_REQUESTED = booleanPreferencesKey("responseCompletionNotifications.hasRequestedPermission")
         val FAVORITE_MODEL_KEYS = stringPreferencesKey("chatComposer.favoriteModels")

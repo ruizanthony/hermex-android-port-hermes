@@ -8,6 +8,7 @@ import kotlinx.coroutines.sync.withLock
 
 /** Bounded read-only proof lookup. Cache only verdicts, never downloaded transcripts. */
 internal class DelegationEnricher(private val now: () -> Long = System::currentTimeMillis) {
+    private companion object { const val NEGATIVE_VERDICT_TTL_MS = 300_000L }
     private data class Key(val id: String?, val parent: String?, val profile: String?, val created: Double?)
     private data class Verdict(val confirmed: Boolean, val expires: Long)
     private val verdicts = linkedMapOf<Key, Verdict>()
@@ -43,7 +44,7 @@ internal class DelegationEnricher(private val now: () -> Long = System::currentT
                     }
                 } catch (error: CancellationException) { throw error }
                 catch (_: Exception) { null }
-                verdicts[key] = Verdict(confirmed == true, when (confirmed) { true -> Long.MAX_VALUE; false -> now() + 60_000; null -> now() + 5_000 })
+                verdicts[key] = Verdict(confirmed == true, when (confirmed) { true -> Long.MAX_VALUE; false -> now() + NEGATIVE_VERDICT_TTL_MS; null -> now() + 5_000 })
             }
         }
         while (verdicts.size > 512) verdicts.remove(verdicts.keys.first())

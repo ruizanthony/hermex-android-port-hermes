@@ -8,6 +8,7 @@ import kotlin.math.abs
 
 /** Hidden nodes are proof only. Mirrors the server's legacy null-profile = default contract. */
 internal class SparseLineageResolver {
+    private companion object { const val PROOF_TTL_MS = 300_000L }
     private data class Proof(val child: SessionSummary?, val checkedAt: Long)
     private val proofs=mutableMapOf<Pair<String,String>,Proof>()
     private val mutex=Mutex()
@@ -19,7 +20,7 @@ internal class SparseLineageResolver {
         if(!mutex.tryLock()) return rows
         try {
             val now=System.currentTimeMillis()
-            proofs.entries.removeAll { now-it.value.checkedAt>60_000 }
+            proofs.entries.removeAll { now-it.value.checkedAt>PROOF_TTL_MS }
             val byId=rows.associateBy { it.sessionId }
             // Mutable archive/stream state is read afresh each pass, not from link cache.
             val observed=mutableMapOf<String?,SessionSummary?>().apply { putAll(byId) }

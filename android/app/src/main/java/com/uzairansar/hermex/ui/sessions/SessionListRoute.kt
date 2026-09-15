@@ -389,40 +389,48 @@ fun SessionListRoute(
                 } else {
                     if (!searchExpanded) {
                         item {
-                            UtilityRows(
-                                settings = state.mainPageDisplaySettings,
-                                onOpenPanel = onOpenPanel,
-                                onOpenKanban = onOpenKanban,
+                            UtilitySectionsCollapseRow(
+                                collapsed = state.mainPageDisplaySettings.utilitySectionsCollapsed,
+                                onToggle = viewModel::toggleUtilitySectionsCollapsed,
                             )
                         }
-                        if (state.mainPageDisplaySettings.showActiveProfile && !state.isSingleProfileMode) {
+                        if (!state.mainPageDisplaySettings.utilitySectionsCollapsed) {
                             item {
-                                ActiveProfileSection(
-                                    state = state,
-                                    expanded = profilesExpanded,
-                                    onToggleExpanded = { profilesExpanded = !profilesExpanded },
-                                    onSelectProfile = viewModel::switchProfile,
+                                UtilityRows(
+                                    settings = state.mainPageDisplaySettings,
+                                    onOpenPanel = onOpenPanel,
+                                    onOpenKanban = onOpenKanban,
                                 )
                             }
-                        }
-                        if (state.mainPageDisplaySettings.showProjects) {
-                            item {
-                                ProjectSection(
-                                projects = state.projects,
-                                sessions = state.sessions,
-                                selectedProjectId = state.selectedProjectId,
-                                expanded = projectsExpanded,
-                                isMutating = state.isMutating,
-                                isViewingCachedData = state.isViewingCachedData,
-                                onToggleExpanded = { projectsExpanded = !projectsExpanded },
-                                onSelectProject = viewModel::selectProject,
-                                onAddProject = {
-                                    viewModel.beginCreateProject()
-                                    isCreatingProject = true
-                                },
-                                onRenameProject = viewModel::requestRenameProject,
-                                onDeleteProject = viewModel::requestDeleteProject,
-                                )
+                            if (state.mainPageDisplaySettings.showActiveProfile && !state.isSingleProfileMode) {
+                                item {
+                                    ActiveProfileSection(
+                                        state = state,
+                                        expanded = profilesExpanded,
+                                        onToggleExpanded = { profilesExpanded = !profilesExpanded },
+                                        onSelectProfile = viewModel::switchProfile,
+                                    )
+                                }
+                            }
+                            if (state.mainPageDisplaySettings.showProjects) {
+                                item {
+                                    ProjectSection(
+                                    projects = state.projects,
+                                    sessions = state.sessions,
+                                    selectedProjectId = state.selectedProjectId,
+                                    expanded = projectsExpanded,
+                                    isMutating = state.isMutating,
+                                    isViewingCachedData = state.isViewingCachedData,
+                                    onToggleExpanded = { projectsExpanded = !projectsExpanded },
+                                    onSelectProject = viewModel::selectProject,
+                                    onAddProject = {
+                                        viewModel.beginCreateProject()
+                                        isCreatingProject = true
+                                    },
+                                    onRenameProject = viewModel::requestRenameProject,
+                                    onDeleteProject = viewModel::requestDeleteProject,
+                                    )
+                                }
                             }
                         }
                     }
@@ -994,6 +1002,26 @@ private fun NewChatFloatingButton(
                 Text(localizedString("Chat"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
         }
+    }
+}
+
+@Composable
+private fun UtilitySectionsCollapseRow(
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = if (collapsed) 4.dp else 0.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HermexIconButton(
+            localizedString(if (collapsed) "Show shortcuts" else "Hide shortcuts"),
+            if (collapsed) "⌄" else "⌃",
+            onToggle,
+        )
     }
 }
 

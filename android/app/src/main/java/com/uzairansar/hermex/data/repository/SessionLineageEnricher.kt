@@ -11,6 +11,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /** Optional read-only enrichment for servers omitting snapshot redirects from /api/sessions. */
 internal class SessionLineageEnricher {
+    private companion object { const val MEMO_TTL_MS = 300_000L }
     private data class Entry(val value: SessionSummary?, val checkedAt: Long)
     private val memo = mutableMapOf<Pair<String?, String>, Entry>()
     private val permits = Semaphore(2)
@@ -27,7 +28,7 @@ internal class SessionLineageEnricher {
             val id = row.sessionId
             id != null && (id in parentIds || row.preCompressionSnapshot == true) &&
                 row.continuationSessionId.isNullOrBlank() && !row.isDelegatedSubagentSession &&
-                (memo[row.profile to id]?.let { now - it.checkedAt >= 60_000 } ?: true)
+                (memo[row.profile to id]?.let { now - it.checkedAt >= MEMO_TTL_MS } ?: true)
         }.sortedBy { memo[it.profile to it.sessionId!!]?.checkedAt ?: Long.MIN_VALUE }.take(20)
         // Old servers / slow or unavailable detail endpoints must not block the list.
         withTimeoutOrNull(6_000) {

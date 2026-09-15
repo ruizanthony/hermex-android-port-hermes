@@ -13,11 +13,33 @@ internal fun List<SessionSummary>.conversationArchiveStates(now:Long=System.curr
     }
 }
 
+/** Groups rows into proven conversations using the same scoping as the visible projection. */
+internal fun List<SessionSummary>.provenConversationGroups(): List<List<SessionSummary>> =
+    collapseCompressionSegmentsGroups()
+
+/** Session ids of the proven conversation containing this stableId (itself included). Structural only: ignores display archive state. */
+internal fun List<SessionSummary>.chainIdsFor(stableId: String): List<String> =
+    collapseCompressionSegmentsGroups(scopeByArchive = false)
+        .firstOrNull { members -> members.any { it.stableId == stableId } }
+        ?.mapNotNull { it.sessionId?.takeIf { id -> id.isNotBlank() } }
+        ?: emptyList()
+
 /** Display-only projection. Never uses titles or ordinary parenthood as identity. */
-internal fun List<SessionSummary>.collapseCompressionSegments(matchingIds: Set<String>? = null): List<SessionSummary> {
+internal fun List<SessionSummary>.collapseCompressionSegments(matchingIds: Set<String>? = null): List<SessionSummary> =
+    collapseCompressionSegmentsGroups(matchingIds).map { members ->
+        members.maxWithOrNull(
+            compareBy<SessionSummary> { it.isStreaming == true || !it.activeStreamId.isNullOrBlank() }
+                .thenBy { candidate -> members.any { it.lineageRootId==candidate.sessionId } }
+                .thenBy { it.preCompressionSnapshot != true }
+                .thenBy { maxOf(it.lastMessageAt ?: 0.0, it.updatedAt ?: 0.0, it.createdAt ?: 0.0) }
+                .thenBy { it.sessionId.orEmpty() },
+        )!!
+    }
+
+private fun List<SessionSummary>.collapseCompressionSegmentsGroups(matchingIds: Set<String>? = null, scopeByArchive: Boolean = true): List<List<SessionSummary>> {
     val groups = mutableListOf<List<SessionSummary>>()
     val archiveStates=conversationArchiveStates()
-    groupBy { (it.profile?.trim().takeUnless { p -> p.isNullOrEmpty() } ?: "default") to archiveStates[it.stableId] }.values.forEach { scoped ->
+    groupBy { (it.profile?.trim().takeUnless { p -> p.isNullOrEmpty() } ?: "default") to (if (scopeByArchive) archiveStates[it.stableId] else null) }.values.forEach { scoped ->
         val rows = scoped.filter { !it.sessionId.isNullOrBlank() }.associateBy { it.sessionId!! }
         val roots = rows.keys.associateWith { it }.toMutableMap()
         fun root(id: String): String {
@@ -70,15 +92,6 @@ internal fun List<SessionSummary>.collapseCompressionSegments(matchingIds: Set<S
     }
     val matchOrder = matchingIds?.withIndex()?.associate { it.value to it.index }.orEmpty()
     return groups.filter { members -> matchingIds == null || members.any { it.stableId in matchingIds } }
-        .sortedBy { members -> members.minOf { matchOrder[it.stableId] ?: Int.MAX_VALUE } }.map { members ->
-        // Open the actual active row. Never copy another row's stream ID onto it.
-        val representative = members.maxWithOrNull(
-            compareBy<SessionSummary> { it.isStreaming == true || !it.activeStreamId.isNullOrBlank() }
-                .thenBy { candidate -> members.any { it.lineageRootId==candidate.sessionId } }
-                .thenBy { it.preCompressionSnapshot != true }
-                .thenBy { maxOf(it.lastMessageAt ?: 0.0, it.updatedAt ?: 0.0, it.createdAt ?: 0.0) }
-                .thenBy { it.sessionId.orEmpty() },
-        )!!
-        representative
-    }
+        .sortedBy { members -> members.minOf { matchOrder[it.stableId] ?: Int.MAX_VALUE } }
 }
+
