@@ -1,5 +1,7 @@
 package com.uzairansar.hermex.ui.chat
 
+import com.uzairansar.hermex.ui.sessions.AutoRefreshBackoffPolicy
+
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -501,6 +503,10 @@ class ChatViewModel internal constructor(
         super.onCleared()
     }
 
+    // Idle reconciliation cadence backs off on server failures and resets on the
+    // first success; the loop itself stays silent (transcript untouched).
+    internal val autoRefreshBackoff = AutoRefreshBackoffPolicy(baseIntervalMillis = 5_000, maxIntervalMillis = 60_000)
+
     private val visibleRefreshMutex = kotlinx.coroutines.sync.Mutex()
 
     /** Called only by the resumed screen. Never reset composer or issue mutations. */
@@ -512,10 +518,18 @@ class ChatViewModel internal constructor(
                 before.messages.any { it.id?.startsWith("optimistic-") == true } ||
                 before.isLoadingOlderMessages || before.isRunningSessionAction || before.isEditingMessage ||
                 before.isRegeneratingMessage || sendStartJob?.isActive == true ||
-                completedTranscriptRefreshJob?.isActive == true || streamRecoveryJob?.isActive == true) return
+                completedTranscriptRefreshJob?.isActive == true || streamRecoveryJob?.isActive == true) {
+                // Busy or mid-flight: not a server failure, keep the current cadence.
+                return
+            }
             val load = loadGeneration
             val send = sendStartGeneration
             val result = repository.loadSessionSnapshot(sessionId)
+            when (result) {
+                is ResultState.Error -> autoRefreshBackoff.onFailure()
+                is ResultState.Data -> if (!result.fromCache) autoRefreshBackoff.onSuccess() else Unit
+                ResultState.Loading -> Unit
+            }
             val current = _state.value
             if (isClearing || load != loadGeneration || send != sendStartGeneration ||
                 current.messages != before.messages || current.isStreaming || current.isRunningSessionAction ||

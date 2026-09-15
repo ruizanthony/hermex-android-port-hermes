@@ -264,6 +264,7 @@ class SessionListViewModel(
     private var profilesJob: Job? = null
     private var profilesGeneration = 0L
     private var hasEnteredComposition = false
+    internal val autoRefreshBackoff = AutoRefreshBackoffPolicy(baseIntervalMillis = 5_000, maxIntervalMillis = 60_000)
 
     init {
         viewModelScope.launch {
@@ -309,6 +310,7 @@ class SessionListViewModel(
         try { refreshJob?.join() } finally {
             if (!kotlinx.coroutines.currentCoroutineContext().isActive) refreshJob?.cancel()
         }
+        if (_state.value.error == null) autoRefreshBackoff.onSuccess() else autoRefreshBackoff.onFailure()
     }
 
     fun refresh(clearNotice: Boolean = true) {

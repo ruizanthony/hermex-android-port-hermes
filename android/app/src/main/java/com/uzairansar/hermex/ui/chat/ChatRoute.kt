@@ -839,7 +839,7 @@ fun ChatRoute(
         refreshLifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
             while (kotlinx.coroutines.currentCoroutineContext().isActive) {
                 viewModel.refreshVisibleConversation()
-                delay(5_000)
+                delay(viewModel.autoRefreshBackoff.currentIntervalMillis)
             }
         }
     }

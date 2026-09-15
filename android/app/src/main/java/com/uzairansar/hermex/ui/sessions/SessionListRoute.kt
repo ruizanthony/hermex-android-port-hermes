@@ -238,12 +238,14 @@ fun SessionListRoute(
 
     // Navigation keeps this ViewModel alive while chat is on top. Refresh each time
     // the sessions destination re-enters composition so newly changed chats appear.
+    // Cadence backs off on server failures (battery + noisy-LAN friendliness) and
+    // resets to 5s on the first success.
     val listLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     LaunchedEffect(viewModel, listLifecycleOwner) {
         listLifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.RESUMED) {
             while (kotlinx.coroutines.currentCoroutineContext().isActive) {
                 viewModel.refreshWhileVisible()
-                kotlinx.coroutines.delay(5_000)
+                kotlinx.coroutines.delay(viewModel.autoRefreshBackoff.currentIntervalMillis)
             }
         }
     }
