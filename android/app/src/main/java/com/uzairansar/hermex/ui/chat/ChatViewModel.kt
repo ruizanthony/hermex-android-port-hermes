@@ -468,6 +468,7 @@ class ChatViewModel internal constructor(
         isClearing = true
         draftPersistenceJob?.cancel()
         runCatching { persistPendingState(durable = true) }
+        persistMaterializedTranscriptBlocking()
         streamJob?.cancel()
         streamPacingJob?.cancel()
         streamRecoveryJob?.cancel()
@@ -513,6 +514,7 @@ class ChatViewModel internal constructor(
     internal suspend fun refreshVisibleConversation() {
         if (!visibleRefreshMutex.tryLock()) return
         try {
+            persistMaterializedTranscript()
             val before = _state.value
             if (isClearing || before.isLoading || before.isStreaming || before.openSessionId != null ||
                 before.messages.any { it.id?.startsWith("optimistic-") == true } ||
@@ -2918,6 +2920,46 @@ class ChatViewModel internal constructor(
         )
     }
 
+    /**
+     * Persists the currently materialized transcript to the local cache without waiting
+     * for a completed stream. Only stable content is eligible: optimistic user echoes,
+     * the in-flight "streaming" placeholder, and local-only notices are excluded so a
+     * reopen renders instantly without provisional junk.
+     */
+    private fun persistMaterializedTranscript() {
+        if (isClearing) return
+        val snapshot = _state.value
+        if (snapshot.isViewingCachedData) return
+        val materialized = eligibleForTranscriptCache(snapshot.messages)
+        if (materialized.isEmpty()) return
+        if (transcriptCacheJob?.isActive == true) transcriptCacheJob?.cancel()
+        transcriptCacheJob = viewModelScope.launch {
+            runSuspendCatching { repository.cacheMessages(sessionId, materialized) }
+        }
+    }
+
+    /** Stable messages only: optimistic echoes, streaming placeholder and local notices stay out of the cache. */
+    private fun eligibleForTranscriptCache(messages: List<ChatMessage>): List<ChatMessage> = messages
+        .filterNot { it.id == "streaming" }
+        .filterNot { it.id?.startsWith("optimistic-") == true }
+        .filterNot { it.id?.startsWith("local-") == true }
+
+    private var transcriptCacheJob: Job? = null
+
+    /**
+     * Synchronous variant used from onCleared: the viewModelScope is being cancelled, so
+     * the bounded write runs on its own to guarantee a warm cache on reopen.
+     */
+    private fun persistMaterializedTranscriptBlocking() {
+        val snapshot = _state.value
+        if (snapshot.isViewingCachedData) return
+        val materialized = eligibleForTranscriptCache(snapshot.messages)
+        if (materialized.isEmpty()) return
+        kotlinx.coroutines.runBlocking {
+            runCatching { repository.cacheMessages(sessionId, materialized) }
+        }
+    }
+
     private fun resumeAuxiliaryTasks() {
         BtwTaskRegistry.load(registryKey)?.let { task ->
             if (_state.value.messages.none { it.id == task.messageId }) {
@@ -3263,6 +3305,7 @@ class ChatViewModel internal constructor(
                     is SseEvent.ToolCompleted -> {
                         markStreamProgress()
                         _state.update { it.copy(liveToolActivity = null) }
+                        persistMaterializedTranscript()
                     }
                     is SseEvent.Title -> {
                         if (event.sessionId.isNullOrBlank() || event.sessionId == sessionId) {

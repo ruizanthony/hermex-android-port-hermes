@@ -604,11 +604,40 @@ class SessionListViewModel(
     fun toggleArchive(session: SessionSummary) {
         if (rejectReadOnlyMutation(session)) return
         val id = session.sessionId ?: return
-        val archived = session.archived != true
-        val chainIds = _state.value.sessions.chainIdsFor(session.stableId).ifEmpty { listOfNotNull(id) }
-        mutate(if (archived) "Session archived." else "Session restored.") {
-            if (chainIds.size > 1) repository.archiveChain(chainIds, archived)
-            else repository.archive(id, archived).mutationError("The server could not update the archive state.")
+        val plan = OptimisticArchive.plan(_state.value.sessions, session.stableId) ?: return
+        if (_state.value.isSwitchingProfile) {
+            _state.update { it.copy(error = "An action is already running. Try again in a moment.") }
+            return
+        }
+        // Optimistic flip: the row leaves the ordinary view immediately. The server
+        // mutations keep running in the background; a refusal restores the rows.
+        _state.update { current ->
+            current.copy(
+                sessions = plan.updated,
+                error = null,
+                notice = null,
+            )
+        }
+        viewModelScope.launch {
+            val error = if (plan.chainIds.size > 1) {
+                repository.archiveChain(plan.chainIds, plan.archive)
+            } else {
+                repository.archive(plan.chainIds.first(), plan.archive).mutationError("The server could not update the archive state.")
+            }
+            when {
+                error == null -> {
+                    _state.update { it.copy(notice = if (plan.archive) "Session archived." else "Session restored.") }
+                    refresh(clearNotice = false)
+                }
+                else -> {
+                    _state.update { current ->
+                        current.copy(
+                            sessions = OptimisticArchive.rollback(current.sessions, plan),
+                            error = error,
+                        )
+                    }
+                }
+            }
         }
     }
 
