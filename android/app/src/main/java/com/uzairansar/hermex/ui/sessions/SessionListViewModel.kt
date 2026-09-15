@@ -310,7 +310,6 @@ class SessionListViewModel(
         try { refreshJob?.join() } finally {
             if (!kotlinx.coroutines.currentCoroutineContext().isActive) refreshJob?.cancel()
         }
-        if (_state.value.error == null) autoRefreshBackoff.onSuccess() else autoRefreshBackoff.onFailure()
     }
 
     fun refresh(clearNotice: Boolean = true) {
@@ -347,6 +346,10 @@ class SessionListViewModel(
             }
             val projects = async { runSuspendCatching { repository.loadProjects() } }
             val result = repository.loadSessions(includeArchived = requestedArchivedMode)
+            // Cadence outcome: fromCache=true is reachable ONLY through the network-failure
+            // fallback (cache-eligible errors with a warm cache), so it counts as a failure
+            // for the auto-refresh backoff even though displayed content stays intact.
+            if (result is ResultState.Data && !result.fromCache) autoRefreshBackoff.onSuccess() else autoRefreshBackoff.onFailure()
             if (_state.value.showArchived != requestedArchivedMode) return@launch
             when (result) {
                 is ResultState.Data -> {

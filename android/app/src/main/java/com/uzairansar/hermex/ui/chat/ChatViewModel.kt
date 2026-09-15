@@ -527,7 +527,7 @@ class ChatViewModel internal constructor(
             val result = repository.loadSessionSnapshot(sessionId)
             when (result) {
                 is ResultState.Error -> autoRefreshBackoff.onFailure()
-                is ResultState.Data -> if (!result.fromCache) autoRefreshBackoff.onSuccess() else Unit
+                is ResultState.Data -> if (result.fromCache) autoRefreshBackoff.onFailure() else autoRefreshBackoff.onSuccess()
                 ResultState.Loading -> Unit
             }
             val current = _state.value

@@ -7,6 +7,9 @@ package com.uzairansar.hermex.ui.sessions
  * up to [maxIntervalMillis]; any success resets it to the base. The loops stay
  * silent on errors (list keeps cached content, chat keeps transcript) so a slow
  * or unreachable server degrades cadence instead of spamming the UI.
+ *
+ * Not thread-safe: confined to the main dispatcher by both call sites; mutation
+ * happens only inside the ViewModel refresh paths.
  */
 class AutoRefreshBackoffPolicy(
     private val baseIntervalMillis: Long,
