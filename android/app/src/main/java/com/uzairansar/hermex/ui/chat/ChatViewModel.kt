@@ -57,6 +57,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.update
@@ -447,6 +449,14 @@ class ChatViewModel internal constructor(
         foregroundRefreshCoordinator = ChatForegroundRefreshCoordinator(scope = viewModelScope).apply {
             refreshAttempt = { refreshVisibleConversation(); true }
         }
+        // Bridge the VM's own streaming state (NOT the frozen UI collect): when a
+        // stream ends while the app is backgrounded, the coordinator must see
+        // active=false and stop the 15s warm loop immediately (battery contract).
+        viewModelScope.launch {
+            state.map { it.isStreaming || it.activeStreamId != null }.distinctUntilChanged().collect { active ->
+                foregroundRefreshCoordinator.onConversationActive(active)
+            }
+        }
         load()
         loadComposerConfig()
         refreshApprovalBypassState()
@@ -542,7 +552,6 @@ class ChatViewModel internal constructor(
     /** Called by the resumed screen loop and the foreground/background coordinator. Never reset composer or issue mutations. */
     internal suspend fun refreshVisibleConversation() {
         if (!visibleRefreshMutex.tryLock()) return
-        isRefreshingConversationInternal.value = true
         try {
             persistMaterializedTranscript()
             val before = _state.value
@@ -554,6 +563,9 @@ class ChatViewModel internal constructor(
                 // Busy or mid-flight: not a server failure, keep the current cadence.
                 return
             }
+            // A real network attempt starts only here (past the busy-check); the
+            // spinner flag wraps effective fetches, never no-op passes.
+            isRefreshingConversationInternal.value = true
             val load = loadGeneration
             val send = sendStartGeneration
             val result = repository.loadSessionSnapshot(sessionId)

@@ -66,4 +66,46 @@ class ChatRefreshTest {
             assertEquals("keep this",vm.state.value.draft)
         } finally { store.clear(); vm.viewModelScope.coroutineContext[Job]?.join(); server.close() }
     }
+
+    // Review fix wiring test: the VM bridges its OWN streaming state to the
+    // coordinator (not the frozen UI collect), so a stream that ends while the
+    // app is backgrounded stops the 15s warm loop (battery contract).
+    @Test fun coordinatorActiveFlagFollowsVmStreamingStateWithoutUi() = runTest {
+        val body=AtomicReference("old")
+        val server=MockWebServer()
+        server.dispatcher=object:Dispatcher() {
+            override fun dispatch(request:RecordedRequest):MockResponse {
+                val active = if(body.get()!="old") ",\"active_stream_id\":\"new-stream\"" else ""
+                val json=when(request.url.encodedPath) {
+                    "/api/session" -> "{\"session\":{\"session_id\":\"s\"$active,\"messages\":[{\"id\":\"m\",\"role\":\"assistant\",\"content\":\"${body.get()}\"}]}}"
+                    else -> "{}"
+                }
+                return MockResponse.Builder().code(200).body(json).build()
+            }
+        }
+        server.start()
+        val http=OkHttpClient()
+        val vm=ChatViewModel("s",ChatRepository(HermesApiClient(server.url("/"),http),RecordingCacheDao(),ServerCacheOwnership(),SseStreamClient(server.url("/"),http){emptyList()}))
+        val store=androidx.lifecycle.ViewModelStore().also { it.put("fixture",vm) }
+        try {
+            withContext(Dispatchers.Default) { withTimeout(5000){vm.state.first{!it.isLoading}} }
+            // Simulate the app going background: only the VM-level bridge runs.
+            vm.onAppVisibilityChanged(false)
+            // A stream appears (external message + active stream id).
+            body.set("external message")
+            vm.refreshVisibleConversation()
+            withContext(Dispatchers.Default) { withTimeout(5000){vm.state.first{it.activeStreamId!=null}} }
+            // The coordinator must see active=true through the VM bridge.
+            withContext(Dispatchers.Default) { withTimeout(5000) {
+                var seen=false
+                while(!seen){ if(vm.foregroundRefreshCoordinator.isConversationActiveForTest()) seen=true }
+            } }
+            // Stream ends server-side; the VM refresh clears activeStreamId and
+            // the bridge must flip the coordinator to inactive.
+            body.set("done")
+            vm.refreshVisibleConversation()
+            withContext(Dispatchers.Default) { withTimeout(5000){vm.state.first{it.activeStreamId==null}} }
+            assert(!vm.foregroundRefreshCoordinator.isConversationActiveForTest())
+        } finally { store.clear(); vm.viewModelScope.coroutineContext[Job]?.join(); server.close() }
+    }
 }

@@ -854,9 +854,6 @@ fun ChatRoute(
             viewModel.onAppVisibilityChanged(active)
         }
     }
-    LaunchedEffect(viewModel, state.isStreaming) {
-        viewModel.onConversationActiveChanged(state.isStreaming)
-    }
 
     LaunchedEffect(state.responseCompletionTrigger) {
         if (state.responseCompletionTrigger > 0) viewModel.refreshCompletedTranscriptIfNeeded()
@@ -1744,19 +1741,6 @@ internal fun ChatTopBar(
             onClick = onBack,
             modifier = Modifier.align(Alignment.CenterStart),
         )
-        // Small refresh indicator next to the title while a coordinator-driven
-        // conversation refresh attempt is running (foreground transition or
-        // background warm loop).
-        if (isRefreshing) {
-            CircularProgressIndicator(
-                strokeWidth = 2.dp,
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 52.dp)
-                    .size(14.dp)
-                    .testTag("chat_refresh_spinner"),
-            )
-        }
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -1770,13 +1754,28 @@ internal fun ChatTopBar(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Small refresh indicator beside the title while a conversation
+                // refresh attempt runs (screen loop, foreground transition or
+                // background warm loop). Inside the title row: no overlap with
+                // the back button's glass circle.
+                if (isRefreshing) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier
+                            .size(14.dp)
+                            .testTag("chat_refresh_spinner"),
+                    )
+                }
+            }
             if (!subtitle.isNullOrBlank()) {
                 Text(
                     subtitle,

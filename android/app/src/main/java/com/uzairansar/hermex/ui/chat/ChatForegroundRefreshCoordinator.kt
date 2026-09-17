@@ -38,6 +38,10 @@ class ChatForegroundRefreshCoordinator(
 
     private var foreground = false
     private var conversationActive = false
+
+    /** Test-only view of the active flag (wiring assertions). */
+    @androidx.annotation.VisibleForTesting(otherwise = androidx.annotation.VisibleForTesting.NONE)
+    fun isConversationActiveForTest(): Boolean = conversationActive
     private var backgroundLoopJob: Job? = null
     private val attemptMutex = Mutex()
 
