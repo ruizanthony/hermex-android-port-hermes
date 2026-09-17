@@ -422,6 +422,9 @@ class ChatViewModel internal constructor(
     private var isDrainingQueuedSlashMessage = false
     @Volatile private var isClearing = false
 
+    internal lateinit var foregroundRefreshCoordinator: ChatForegroundRefreshCoordinator
+        private set
+
     init {
         val persisted = pendingStateStore?.load()
         queuedSlashMessages.addAll(persisted?.queuedDrafts ?: QueuedDraftRegistry.load(registryKey))
@@ -437,10 +440,29 @@ class ChatViewModel internal constructor(
         importedSharedDraftCreatedAtEpochMillis = persisted?.importedSharedDraftCreatedAtEpochMillis
         importedSharedDraftRemainder = persisted?.importedSharedDraftRemainder.orEmpty()
         currentBtwTask?.let { BtwTaskRegistry.save(registryKey, it) }
+        // Foreground/background conversation refresh coordination: read-only
+        // snapshot attempts (same path as the resumed screen loop) so a
+        // foreground transition refreshes immediately and an active
+        // conversation keeps its cache warm while backgrounded.
+        foregroundRefreshCoordinator = ChatForegroundRefreshCoordinator(scope = viewModelScope).apply {
+            refreshAttempt = { refreshVisibleConversation(); true }
+        }
         load()
         loadComposerConfig()
         refreshApprovalBypassState()
         resumePendingLocalUploads()
+    }
+
+    /** App visibility changed (any activity resumed / last activity paused). */
+    fun onAppVisibilityChanged(active: Boolean) {
+        if (!::foregroundRefreshCoordinator.isInitialized) return
+        if (active) foregroundRefreshCoordinator.onAppForeground() else foregroundRefreshCoordinator.onAppBackground()
+    }
+
+    /** Streaming state of the open conversation changed (drives the background warm loop). */
+    fun onConversationActiveChanged(active: Boolean) {
+        if (!::foregroundRefreshCoordinator.isInitialized) return
+        foregroundRefreshCoordinator.onConversationActive(active)
     }
 
     fun updateDraft(value: String) {
@@ -510,9 +532,17 @@ class ChatViewModel internal constructor(
 
     private val visibleRefreshMutex = kotlinx.coroutines.sync.Mutex()
 
-    /** Called only by the resumed screen. Never reset composer or issue mutations. */
+    /**
+     * True while ANY idle reconciliation attempt runs (resumed screen loop or
+     * foreground/background coordinator). Drives the top-bar spinner.
+     */
+    private val isRefreshingConversationInternal = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isRefreshingConversation: kotlinx.coroutines.flow.StateFlow<Boolean> = isRefreshingConversationInternal
+
+    /** Called by the resumed screen loop and the foreground/background coordinator. Never reset composer or issue mutations. */
     internal suspend fun refreshVisibleConversation() {
         if (!visibleRefreshMutex.tryLock()) return
+        isRefreshingConversationInternal.value = true
         try {
             persistMaterializedTranscript()
             val before = _state.value
@@ -546,7 +576,10 @@ class ChatViewModel internal constructor(
                 applySessionSnapshot(merged, fromCache = false)
                 reconnectLoadedActiveStream(snapshot, fromCache = false)
             }
-        } finally { visibleRefreshMutex.unlock() }
+        } finally {
+            isRefreshingConversationInternal.value = false
+            visibleRefreshMutex.unlock()
+        }
     }
 
     fun load() {

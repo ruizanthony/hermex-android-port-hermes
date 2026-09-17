@@ -79,6 +79,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -147,6 +148,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.uzairansar.hermex.core.runSuspendCatching
+import com.uzairansar.hermex.AppVisibilityTracker
 import com.uzairansar.hermex.core.model.ApprovalChoice
 import com.uzairansar.hermex.core.model.ChatMessage
 import com.uzairansar.hermex.core.model.CompressionReferenceCard
@@ -844,6 +846,18 @@ fun ChatRoute(
         }
     }
 
+    // App-wide foreground/background transitions drive the coordinator's
+    // immediate foreground attempt and the bounded background warm loop; the
+    // conversation's streaming state gates the background loop.
+    LaunchedEffect(viewModel) {
+        AppVisibilityTracker.isForeground.collect { active ->
+            viewModel.onAppVisibilityChanged(active)
+        }
+    }
+    LaunchedEffect(viewModel, state.isStreaming) {
+        viewModel.onConversationActiveChanged(state.isStreaming)
+    }
+
     LaunchedEffect(state.responseCompletionTrigger) {
         if (state.responseCompletionTrigger > 0) viewModel.refreshCompletedTranscriptIfNeeded()
     }
@@ -1201,9 +1215,12 @@ fun ChatRoute(
                 )
             }
         }
+        val isRefreshingIndicator by viewModel.isRefreshingConversation.collectAsStateWithLifecycle()
+
         ChatTopBar(
             title = state.headerTitle,
             subtitle = state.headerSubtitle,
+            isRefreshing = isRefreshingIndicator,
             hasRepository = gitState.hasRepository,
             showsFilesButton = chatDisplaySettings.showsChatFilesButton,
             showsGitControls = chatDisplaySettings.showsChatGitControls,
@@ -1692,6 +1709,7 @@ private fun AttachmentInfoRow(
 internal fun ChatTopBar(
     title: String,
     subtitle: String?,
+    isRefreshing: Boolean = false,
     hasRepository: Boolean,
     showsFilesButton: Boolean,
     showsGitControls: Boolean,
@@ -1726,6 +1744,19 @@ internal fun ChatTopBar(
             onClick = onBack,
             modifier = Modifier.align(Alignment.CenterStart),
         )
+        // Small refresh indicator next to the title while a coordinator-driven
+        // conversation refresh attempt is running (foreground transition or
+        // background warm loop).
+        if (isRefreshing) {
+            CircularProgressIndicator(
+                strokeWidth = 2.dp,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 52.dp)
+                    .size(14.dp)
+                    .testTag("chat_refresh_spinner"),
+            )
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
