@@ -20,38 +20,61 @@ internal fun List<SessionSummary>.provenConversationGroups(): List<List<SessionS
 /**
  * Superseded lineage segments: Desktop rows still carrying the fallback title
  * ("Desktop Session"/"Untitled") whose conversation lives on under a titled
- * continuation, plus untitled one-shot delegation leaves. Hidden only on
- * in-payload linkage proof (a titled descendant, or a visible parent); a solo
- * default-titled row and any active row (streaming/pinned/pending) stay
- * visible. Display-only projection; raw rows are never mutated.
+ * continuation, plus untitled one-shot delegation leaves behind a TITLED
+ * parent. Hidden only on in-payload linkage proof; a solo default-titled row
+ * and any active row (streaming/stream id/pinned) stay visible. Untitled
+ * chains without a titled member stay visible (ambiguous, not proven
+ * replaced). Display-only projection; raw rows are never mutated.
  */
 internal fun List<SessionSummary>.filterNotSupersededSegments(): List<SessionSummary> {
     fun fallbackTitled(row: SessionSummary): Boolean {
-        val normalized = row.title?.trim()?.lowercase() ?: return true
-        if (normalized !in setOf("", "untitled", "untitled session", "desktop session")) return false
+        // Source is checked FIRST: a non-Desktop row with a null title is not
+        // the Desktop fallback shape and must stay visible.
         val source = row.rawSource?.trim()?.lowercase() ?: row.sourceTag?.trim()?.lowercase() ?: ""
-        return source == "desktop" || source.isBlank()
+        if (source != "desktop" && source.isNotBlank()) return false
+        val normalized = row.title?.trim()?.lowercase() ?: return true
+        return normalized in setOf("", "untitled", "untitled session", "desktop session")
     }
 
     fun active(row: SessionSummary): Boolean = row.isStreaming == true ||
         !row.activeStreamId.isNullOrBlank() || row.pinned == true
 
-    val byId = filter { !it.sessionId.isNullOrBlank() }.associateBy { it.sessionId!! }
-    val children = filter { !it.parentSessionId.isNullOrBlank() }.groupBy { it.parentSessionId!! }
+    fun key(row: SessionSummary) = row.profile?.trim().takeUnless { it.isNullOrEmpty() } ?: "default"
+    val scoped = groupBy(::key).values.flatMap { rows ->
+        val byId = rows.filter { !it.sessionId.isNullOrBlank() }.associateBy { it.sessionId!! }
+        val children = rows.filter { !it.parentSessionId.isNullOrBlank() }.groupBy { it.parentSessionId!! }
 
-    fun titledDescendant(id: String, seen: MutableSet<String> = mutableSetOf()): Boolean {
-        if (!seen.add(id)) return false
-        return children[id].orEmpty().any { child ->
-            (!fallbackTitled(child) && !active(child)) || titledDescendant(child.sessionId.orEmpty(), seen)
+        fun titledDescendant(id: String, seen: MutableSet<String> = mutableSetOf()): Boolean {
+            if (!seen.add(id)) return false
+            return children[id].orEmpty().any { child ->
+                (!fallbackTitled(child) && !active(child)) || titledDescendant(child.sessionId.orEmpty(), seen)
+            }
         }
-    }
 
-    return filter { row ->
-        val sid = row.sessionId ?: return@filter true
-        if (!fallbackTitled(row) || active(row)) return@filter true
-        val parent = row.parentSessionId?.let { byId[it] }
-        !(titledDescendant(sid) || (parent != null && !active(parent)))
+        var provenSuperseded = mutableSetOf<String>()
+        var grew = true
+        while (grew) {
+            grew = false
+            for (row in rows) {
+                val sid = row.sessionId?.takeIf { it.isNotBlank() } ?: continue
+                if (sid in provenSuperseded || !fallbackTitled(row) || active(row)) continue
+                val parent = row.parentSessionId?.let { byId[it] }
+                val titledParent = parent?.takeIf { !fallbackTitled(it) }
+                // A parent already PROVEN superseded (titled descendant found in
+                // a previous pass) makes this leaf part of a dead branch; plain
+                // parenthood alone still never hides anything.
+                val parentDead = parent != null && parent.sessionId in provenSuperseded
+                if (titledDescendant(sid) || (titledParent != null && !active(titledParent)) ||
+                    (parentDead && parent != null && !active(parent))
+                ) {
+                    provenSuperseded.add(sid)
+                    grew = true
+                }
+            }
+        }
+        rows.filter { row -> row.sessionId?.takeIf { it.isNotBlank() }?.let { it !in provenSuperseded } ?: true }
     }
+    return scoped
 }
 
 /** Session ids of the proven conversation containing this stableId (itself included). Structural only: ignores display archive state. */

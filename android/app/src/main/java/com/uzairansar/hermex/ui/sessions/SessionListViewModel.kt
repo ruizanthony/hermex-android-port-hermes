@@ -136,7 +136,11 @@ data class SessionListUiState(
                 .filter { sessionRowDisplaySettings.showCronSessions || !it.isCronSession }
                 .filter { showClaudeCodeSessions || !it.isClaudeCodeSession }
                 .filter { sessionRowDisplaySettings.showSubagentSessions || !it.isListSubagent }
-            val segmentFiltered = sourceFiltered.filterNotSupersededSegments()
+            // Superseded segments stay reachable through explicit historical
+            // access paths: local/remote search, and the "show compression
+            // segments" disclosure toggle. Filter only the ordinary browse list.
+            val segmentFiltered = if (searchQuery.isNotBlank() || showCompressionSegments) sourceFiltered
+            else sourceFiltered.filterNotSupersededSegments()
             val projectFiltered = selectedProjectId?.let { projectId ->
                 segmentFiltered.filter { it.projectId == projectId }
             } ?: segmentFiltered
