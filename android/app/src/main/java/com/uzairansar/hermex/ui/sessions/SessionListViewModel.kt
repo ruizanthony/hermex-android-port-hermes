@@ -136,9 +136,10 @@ data class SessionListUiState(
                 .filter { sessionRowDisplaySettings.showCronSessions || !it.isCronSession }
                 .filter { showClaudeCodeSessions || !it.isClaudeCodeSession }
                 .filter { sessionRowDisplaySettings.showSubagentSessions || !it.isListSubagent }
+            val segmentFiltered = sourceFiltered.filterNotSupersededSegments()
             val projectFiltered = selectedProjectId?.let { projectId ->
-                sourceFiltered.filter { it.projectId == projectId }
-            } ?: sourceFiltered
+                segmentFiltered.filter { it.projectId == projectId }
+            } ?: segmentFiltered
             val query = searchQuery.normalizedSearchQuery()
             val localMatches = projectFiltered
                 .filter { query.isEmpty() || it.searchableText.contains(query) }

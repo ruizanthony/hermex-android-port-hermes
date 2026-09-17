@@ -17,6 +17,43 @@ internal fun List<SessionSummary>.conversationArchiveStates(now:Long=System.curr
 internal fun List<SessionSummary>.provenConversationGroups(): List<List<SessionSummary>> =
     collapseCompressionSegmentsGroups()
 
+/**
+ * Superseded lineage segments: Desktop rows still carrying the fallback title
+ * ("Desktop Session"/"Untitled") whose conversation lives on under a titled
+ * continuation, plus untitled one-shot delegation leaves. Hidden only on
+ * in-payload linkage proof (a titled descendant, or a visible parent); a solo
+ * default-titled row and any active row (streaming/pinned/pending) stay
+ * visible. Display-only projection; raw rows are never mutated.
+ */
+internal fun List<SessionSummary>.filterNotSupersededSegments(): List<SessionSummary> {
+    fun fallbackTitled(row: SessionSummary): Boolean {
+        val normalized = row.title?.trim()?.lowercase() ?: return true
+        if (normalized !in setOf("", "untitled", "untitled session", "desktop session")) return false
+        val source = row.rawSource?.trim()?.lowercase() ?: row.sourceTag?.trim()?.lowercase() ?: ""
+        return source == "desktop" || source.isBlank()
+    }
+
+    fun active(row: SessionSummary): Boolean = row.isStreaming == true ||
+        !row.activeStreamId.isNullOrBlank() || row.pinned == true
+
+    val byId = filter { !it.sessionId.isNullOrBlank() }.associateBy { it.sessionId!! }
+    val children = filter { !it.parentSessionId.isNullOrBlank() }.groupBy { it.parentSessionId!! }
+
+    fun titledDescendant(id: String, seen: MutableSet<String> = mutableSetOf()): Boolean {
+        if (!seen.add(id)) return false
+        return children[id].orEmpty().any { child ->
+            (!fallbackTitled(child) && !active(child)) || titledDescendant(child.sessionId.orEmpty(), seen)
+        }
+    }
+
+    return filter { row ->
+        val sid = row.sessionId ?: return@filter true
+        if (!fallbackTitled(row) || active(row)) return@filter true
+        val parent = row.parentSessionId?.let { byId[it] }
+        !(titledDescendant(sid) || (parent != null && !active(parent)))
+    }
+}
+
 /** Session ids of the proven conversation containing this stableId (itself included). Structural only: ignores display archive state. */
 internal fun List<SessionSummary>.chainIdsFor(stableId: String): List<String> =
     collapseCompressionSegmentsGroups(scopeByArchive = false)
