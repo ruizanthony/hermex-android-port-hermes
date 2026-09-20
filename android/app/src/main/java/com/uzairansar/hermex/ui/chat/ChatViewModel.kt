@@ -309,6 +309,9 @@ data class ChatUiState(
     val sessionModelProvider: String? = null,
     val pendingExplicitModelPick: Boolean = false,
     val sessionTitle: String? = null,
+    val isPinned: Boolean = false,
+    val canPinConversation: Boolean = false,
+    val isPinning: Boolean = false,
     val sessionWorkspacePath: String? = null,
     val sessionProfile: String? = null,
     val contextWindowSnapshot: ContextWindowSnapshot? = null,
@@ -666,6 +669,9 @@ class ChatViewModel internal constructor(
                     completedToolCallGroups = snapshot.completedToolCallGroups,
                     contextWindowSnapshot = snapshot.contextWindowSnapshot ?: current.contextWindowSnapshot,
                     sessionTitle = snapshot.title.nonBlank() ?: current.sessionTitle,
+                    isPinned = if (!current.isPinning && snapshot.pinCacheGeneration == repository.pinCacheGeneration)
+                        snapshot.pinned ?: current.isPinned else current.isPinned,
+                    canPinConversation = snapshot.sessionId == sessionId && sessionId.isNotBlank(),
                     sessionWorkspacePath = snapshot.workspace.nonBlank() ?: current.sessionWorkspacePath,
                     sessionProfile = snapshot.profile.nonBlank() ?: current.sessionProfile,
                     sessionModel = nextSessionModel,
@@ -2043,6 +2049,33 @@ class ChatViewModel internal constructor(
     fun cancel() {
         viewModelScope.launch {
             cancelActiveStream()
+        }
+    }
+
+    /** Metadata-only action: keep the draft, transcript and active stream intact. */
+    fun togglePin() {
+        val before = _state.value
+        if (isClearing || !before.canPinConversation || before.isLoading || before.isPinning ||
+            before.isViewingCachedData || before.openSessionId != null) return
+        val target = !before.isPinned
+        _state.update { it.copy(isPinning = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val response = repository.pin(sessionId, target)
+                if (isClearing || _state.value.openSessionId != null) return@launch
+                if (response.isConfirmedMutation()) {
+                    _state.update { it.copy(isPinned = response.session?.pinned ?: target) }
+                } else {
+                    _state.update { it.copy(error = response.error ?: "The server could not update the pin state.") }
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (!isClearing && _state.value.openSessionId == null)
+                    _state.update { it.copy(error = error.message ?: "Could not update the pin state.") }
+            } finally {
+                _state.update { it.copy(isPinning = false) }
+            }
         }
     }
 

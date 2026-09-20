@@ -75,7 +75,7 @@ class ChatRefreshTest {
         val server=MockWebServer()
         server.dispatcher=object:Dispatcher() {
             override fun dispatch(request:RecordedRequest):MockResponse {
-                val active = if(body.get()!="old") ",\"active_stream_id\":\"new-stream\"" else ""
+                val active = if(body.get()=="external message") ",\"active_stream_id\":\"new-stream\"" else ""
                 val json=when(request.url.encodedPath) {
                     "/api/session" -> "{\"session\":{\"session_id\":\"s\"$active,\"messages\":[{\"id\":\"m\",\"role\":\"assistant\",\"content\":\"${body.get()}\"}]}}"
                     else -> "{}"
@@ -97,15 +97,16 @@ class ChatRefreshTest {
             withContext(Dispatchers.Default) { withTimeout(5000){vm.state.first{it.activeStreamId!=null}} }
             // The coordinator must see active=true through the VM bridge.
             withContext(Dispatchers.Default) { withTimeout(5000) {
-                var seen=false
-                while(!seen){ if(vm.foregroundRefreshCoordinator.isConversationActiveForTest()) seen=true }
+                while (!vm.foregroundRefreshCoordinator.isConversationActiveForTest()) yield()
             } }
             // Stream ends server-side; the VM refresh clears activeStreamId and
             // the bridge must flip the coordinator to inactive.
             body.set("done")
             vm.refreshVisibleConversation()
             withContext(Dispatchers.Default) { withTimeout(5000){vm.state.first{it.activeStreamId==null}} }
-            assert(!vm.foregroundRefreshCoordinator.isConversationActiveForTest())
+            withContext(Dispatchers.Default) { withTimeout(5000) {
+                while (vm.foregroundRefreshCoordinator.isConversationActiveForTest()) yield()
+            } }
         } finally { store.clear(); vm.viewModelScope.coroutineContext[Job]?.join(); server.close() }
     }
 }

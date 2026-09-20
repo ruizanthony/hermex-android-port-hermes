@@ -1229,6 +1229,10 @@ fun ChatRoute(
                 !state.isRunningSessionAction &&
                 !state.isViewingCachedData,
             onClearConversation = { showsClearConversationConfirmation = true },
+            isPinned = state.isPinned,
+            canPinConversation = state.canPinConversation && !state.isPinning && !state.isLoading &&
+                !state.isViewingCachedData && state.openSessionId == null,
+            onTogglePin = viewModel::togglePin,
             modifier = Modifier.onSizeChanged { topBarHeightPx = it.height },
         )
     }
@@ -1715,6 +1719,9 @@ internal fun ChatTopBar(
     onOpenGit: () -> Unit,
     canClearConversation: Boolean,
     onClearConversation: () -> Unit,
+    isPinned: Boolean = false,
+    canPinConversation: Boolean = false,
+    onTogglePin: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var actionsExpanded by rememberSaveable { mutableStateOf(false) }
@@ -1823,6 +1830,15 @@ internal fun ChatTopBar(
                     expanded = actionsExpanded,
                     onDismissRequest = { actionsExpanded = false },
                 ) {
+                    DropdownMenuItem(
+                        text = { Text(localizedString(if (isPinned) "Unpin" else "Pin")) },
+                        enabled = canPinConversation,
+                        modifier = Modifier.testTag("chat_pin_action"),
+                        onClick = {
+                            actionsExpanded = false
+                            onTogglePin()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text(localizedString("Clear conversation")) },
                         enabled = canClearConversation,

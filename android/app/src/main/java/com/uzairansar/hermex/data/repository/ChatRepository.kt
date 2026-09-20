@@ -59,6 +59,9 @@ data class ChatSessionSnapshot(
     val completedToolCallGroups: List<ToolCallGroup> = emptyList(),
     val contextWindowSnapshot: ContextWindowSnapshot? = null,
     val title: String? = null,
+    val sessionId: String? = null,
+    val pinned: Boolean? = null,
+    val pinCacheGeneration: Long? = null,
     val workspace: String? = null,
     val model: String? = null,
     val modelProvider: String? = null,
@@ -85,6 +88,7 @@ class ChatRepository(
     private val sse: SseStreamClient,
 ) {
     val serverUrl: String = client.baseUrl.toString()
+    val pinCacheGeneration: Long get() = cacheOwnership.generation(serverUrl)
     private val streamEventIds = ConcurrentHashMap<String, String>()
     private val streamCacheGenerations = ConcurrentHashMap<String, Long>()
 
@@ -103,7 +107,7 @@ class ChatRepository(
                 ?: throw ApiError.InvalidResponse("The server did not return this conversation.")
             val messages = session.messages.orEmpty()
             cacheSessionSnapshot(sessionId, session, messages, now, operationGeneration)
-            ResultState.Data(snapshotFromSession(session))
+            ResultState.Data(snapshotFromSession(session).copy(pinCacheGeneration = operationGeneration))
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             if (error is ApiError.Unauthorized) return ResultState.Error(error.userMessage(), error)
@@ -134,6 +138,9 @@ class ChatRepository(
         replaceCachedMessages(resolvedSessionId, messages, now, operationGeneration)
         return snapshotFromSession(session, messagesOverride = messages)
     }
+
+    suspend fun pin(sessionId: String, pinned: Boolean): SessionMutationResponse =
+        SessionRepository(client, cacheDao, cacheOwnership).pin(sessionId, pinned)
 
     suspend fun cacheMessages(sessionId: String, messages: List<ChatMessage>) {
         replaceCachedMessages(sessionId, messages)
@@ -381,7 +388,8 @@ class ChatRepository(
         val metadata = cacheDao.cachedSessions(serverUrl, now, includeArchived = true)
             .firstOrNull { it.sessionId == sessionId }
             ?.toSummary()
-        if (messages.isEmpty() && metadata == null) null else snapshotFromCachedSession(messages, metadata)
+        if (messages.isEmpty() && metadata == null) null else
+            snapshotFromCachedSession(messages, metadata).copy(pinCacheGeneration = operationGeneration)
     }
 
     private suspend fun cacheSessionSnapshot(
@@ -446,6 +454,8 @@ class ChatRepository(
             ),
             contextWindowSnapshot = session?.contextWindowSnapshot(),
             title = session?.title,
+            sessionId = session?.sessionId,
+            pinned = session?.pinned,
             workspace = session?.workspace,
             model = session?.model,
             modelProvider = session?.modelProvider,
@@ -461,6 +471,8 @@ class ChatRepository(
     ): ChatSessionSnapshot = ChatSessionSnapshot(
         messages = messages,
         title = session?.title,
+        sessionId = session?.sessionId,
+        pinned = session?.pinned,
         workspace = session?.workspace,
         model = session?.model,
         modelProvider = session?.modelProvider,

@@ -26,6 +26,7 @@ Changes and releases require the fork owner's approval. Work on a dedicated bran
 - The session list stays interactive from cached content: `isLoading` is reserved for the empty-list first load, and cached sessions keep rendering while the background refresh completes. Negative proof verdicts (not-a-subagent, no-continuation) are cached for five minutes, not re-probed every minute.
 - Idle chat reconciliation runs only in the resumed chat lifecycle, is serialized, and must not reset drafts, optimistic sends or an in-flight SSE. Rejoin newly announced streams and retain a `compressed.new_session_id` through incomplete stream termination. Continuation draft copies preserve both source and target and do not transfer queued auto-sends.
 - Technical-message filtering is a reversible display projection driven by `display_kind`/`_source` metadata retained through cache serialization. Keep human requests, quoted markers and ambiguous unfinished turns visible. Never delete the raw transcript.
+- The chat header session-actions menu exposes Pin/Unpin for the real loaded session ID, using the same server mutation and Room metadata as the list. Disable repeated gestures while awaiting the response; a refusal keeps the prior state and is visible. Pin commits fence earlier metadata reads so a stale refresh cannot undo a successful gesture. The maximum pin count belongs to the server configuration, not a client hard-coded cap.
 - Cache schema changes are additive Room migrations. Preserve existing rows and include the generated schema.
 
 ## Work Guidance
@@ -35,7 +36,7 @@ Build from `android/` with the checked-in Gradle wrapper, JDK 17 and Android SDK
 ## Verification
 
 - `./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease`
-- Build the instrumented test APK with `:app:assembleDebugAndroidTest`, then run `ChatRefreshInstrumentedTest`, `SessionCompressionInstrumentedTest` and `HermexDatabaseMigrationInstrumentedTest` on an Android emulator.
+- Build the instrumented test APK with `:app:assembleDebugAndroidTest`, then run `ChatPinInstrumentedTest`, `ChatRefreshInstrumentedTest`, `SessionCompressionInstrumentedTest` and `data.db.HermexDatabaseMigrationInstrumentedTest` (under the `com.uzairansar.hermex` package) on an Android emulator.
 - Verify APK identity/signature, installation, launcher, grouped UI, live-row navigation, historical disclosure and cache persistence. Verify the published APK by downloading it again and comparing SHA-256.
 - Emulator proof is not installation proof on the user's phone. Rollback is opening the unchanged original app.
 
