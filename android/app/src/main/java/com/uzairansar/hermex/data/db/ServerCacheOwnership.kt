@@ -5,7 +5,32 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
+data class TranscriptCacheToken(val generation: Long, val revision: Long)
+
 class ServerCacheOwnership {
+    private val transcriptRevisions = ConcurrentHashMap<Pair<String, String>, AtomicLong>()
+    private val localOrders = ConcurrentHashMap<Pair<String, String>, AtomicLong>()
+    private fun revision(server: String, session: String) = transcriptRevisions.getOrPut(server to session) { AtomicLong() }
+    fun transcriptToken(server: String, session: String) = TranscriptCacheToken(generation(server), revision(server, session).get())
+    fun reserveTranscriptSave(server: String, session: String): Long =
+        localOrders.getOrPut(server to session) { AtomicLong() }.incrementAndGet()
+
+    suspend fun writeTranscriptSnapshot(server: String, session: String, generation: Long, write: suspend () -> Unit): TranscriptCacheToken? {
+        var token: TranscriptCacheToken? = null
+        writeIfCurrent(server, generation) {
+            val next = revision(server, session).incrementAndGet()
+            write()
+            token = TranscriptCacheToken(generation, next)
+        }
+        return token
+    }
+
+    suspend fun writeTranscriptIfCurrent(server: String, session: String, token: TranscriptCacheToken, order: Long, write: suspend () -> Unit) {
+        writeIfCurrent(server, token.generation) {
+            if (revision(server, session).get() == token.revision && localOrders[server to session]?.get() == order) write()
+        }
+    }
+
     private data class ServerState(
         val generation: AtomicLong = AtomicLong(0),
         val mutex: Mutex = Mutex(),

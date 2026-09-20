@@ -365,6 +365,8 @@ fun ChatRoute(
     val speechScope = rememberCoroutineScope()
     val modelPickerScope = rememberCoroutineScope()
 
+    LaunchedEffect(state.isArchived) { if (state.isArchived) onBack() }
+
     LaunchedEffect(state.openSessionId, state.isUploadingAttachment) {
         if (state.isUploadingAttachment) return@LaunchedEffect
         val openSessionId = state.openSessionId ?: return@LaunchedEffect
@@ -1230,9 +1232,12 @@ fun ChatRoute(
                 !state.isViewingCachedData,
             onClearConversation = { showsClearConversationConfirmation = true },
             isPinned = state.isPinned,
-            canPinConversation = state.canPinConversation && !state.isPinning && !state.isLoading &&
+            canPinConversation = state.canPinConversation && !state.isPinning && !state.isLoading && !state.isRunningSessionAction && !state.isArchived &&
                 !state.isViewingCachedData && state.openSessionId == null,
             onTogglePin = viewModel::togglePin,
+            canArchiveConversation = state.canPinConversation && !state.isLoading && !state.isPinning &&
+                !state.isRunningSessionAction && !state.isViewingCachedData && !state.isArchived && state.openSessionId == null,
+            onArchive = viewModel::archiveConversation,
             modifier = Modifier.onSizeChanged { topBarHeightPx = it.height },
         )
     }
@@ -1722,6 +1727,8 @@ internal fun ChatTopBar(
     isPinned: Boolean = false,
     canPinConversation: Boolean = false,
     onTogglePin: () -> Unit = {},
+    canArchiveConversation: Boolean = false,
+    onArchive: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var actionsExpanded by rememberSaveable { mutableStateOf(false) }
@@ -1838,6 +1845,12 @@ internal fun ChatTopBar(
                             actionsExpanded = false
                             onTogglePin()
                         },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(localizedString("Archive")) },
+                        enabled = canArchiveConversation,
+                        modifier = Modifier.testTag("chat_archive_action"),
+                        onClick = { actionsExpanded = false; onArchive() },
                     )
                     DropdownMenuItem(
                         text = { Text(localizedString("Clear conversation")) },

@@ -13,6 +13,11 @@ import org.junit.Test
  * visible.
  */
 class SupersededSegmentFilterTest {
+    @Test(timeout = 5000) fun deepHistoryDoesNotOverflowTheUiStack() {
+        val rows = (0..8000).map { i -> row("s$i", if (i == 8000) "Visible tip" else "Desktop Session", if (i == 0) null else "s${i-1}") }
+        assertEquals(listOf("s8000"), rows.filterNotSupersededSegments().map { it.sessionId })
+    }
+
     private fun row(id: String, title: String?, parent: String? = null, source: String = "desktop") = SessionSummary(
         sessionId = id, title = title, parentSessionId = parent, rawSource = source, sourceTag = source,
     )

@@ -23,8 +23,8 @@ android {
         applicationId = "com.uzairansar.hermex.pichot"
         minSdk = 26
         targetSdk = 36
-        versionCode = 45
-        versionName = "1.2.0-pichot.11"
+        versionCode = 46
+        versionName = "1.2.0-pichot.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true

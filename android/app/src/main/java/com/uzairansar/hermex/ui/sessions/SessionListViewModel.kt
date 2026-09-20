@@ -265,6 +265,7 @@ class SessionListViewModel(
     private val _state = MutableStateFlow(restoredState?.toUiState() ?: SessionListUiState(isLoading = true))
     val state: StateFlow<SessionListUiState> = _state
     private var refreshJob: Job? = null
+    private var refreshGeneration = 0L
     private var remoteSearchJob: Job? = null
     private var profilesJob: Job? = null
     private var profilesGeneration = 0L
@@ -317,7 +318,9 @@ class SessionListViewModel(
         }
     }
 
-    fun refresh(clearNotice: Boolean = true) {
+    fun refresh(clearNotice: Boolean = true, preserveError: Boolean = false) {
+        if (_state.value.isMutating) return
+        val generation = ++refreshGeneration
         refreshJob?.cancel()
         refreshJob = viewModelScope.launch {
             val snapshot = _state.value
@@ -329,7 +332,7 @@ class SessionListViewModel(
             _state.update {
                 it.copy(
                     isLoading = showBlockingSpinner,
-                    error = null,
+                    error = if (preserveError) it.error else null,
                     notice = if (clearNotice) null else it.notice,
                 )
             }
@@ -355,7 +358,7 @@ class SessionListViewModel(
             // fallback (cache-eligible errors with a warm cache), so it counts as a failure
             // for the auto-refresh backoff even though displayed content stays intact.
             if (result is ResultState.Data && !result.fromCache) autoRefreshBackoff.onSuccess() else autoRefreshBackoff.onFailure()
-            if (_state.value.showArchived != requestedArchivedMode) return@launch
+            if (generation != refreshGeneration || _state.value.showArchived != requestedArchivedMode) return@launch
             when (result) {
                 is ResultState.Data -> {
                     if (result.fromCache) remoteSearchJob?.cancel()
@@ -607,47 +610,37 @@ class SessionListViewModel(
     }
 
     fun toggleArchive(session: SessionSummary) {
-        if (rejectReadOnlyMutation(session)) return
-        val id = session.sessionId ?: return
-        val plan = OptimisticArchive.plan(_state.value.sessions, session.stableId) ?: return
-        if (_state.value.isSwitchingProfile) {
+        if (_state.value.isMutating || _state.value.isSwitchingProfile) {
             _state.update { it.copy(error = "An action is already running. Try again in a moment.") }
             return
         }
-        // Optimistic flip: the row leaves the ordinary view immediately. The server
-        // mutations keep running in the background; a refusal restores the rows.
-        _state.update { current ->
-            current.copy(
-                sessions = plan.updated,
-                error = null,
-                notice = null,
-            )
+        if (rejectReadOnlyMutation(session)) return
+        val plan = OptimisticArchive.plan(_state.value.sessions, session.stableId) ?: return
+        if (_state.value.sessions.any { it.sessionId in plan.chainIds && it.isSessionReadOnly }) {
+            _state.update { it.copy(error = "This session is read-only.") }
+            return
         }
+        ++refreshGeneration
+        refreshJob?.cancel()
+        _state.update { it.copy(sessions = plan.updated, isMutating = true, isLoading = false, error = null, notice = null) }
         viewModelScope.launch {
-            val error = if (plan.chainIds.size > 1) {
-                repository.archiveChain(plan.chainIds, plan.archive)
-            } else {
-                repository.archive(plan.chainIds.first(), plan.archive).mutationError("The server could not update the archive state.")
-            }
-            when {
-                error == null -> {
+            var failure: String? = null
+            try {
+                failure = repository.archiveChain(plan.chainIds, plan.archive)
+                if (failure == null) {
                     _state.update { it.copy(notice = if (plan.archive) "Session archived." else "Session restored.") }
-                    refresh(clearNotice = false)
+                } else {
+                    _state.update { it.copy(sessions = OptimisticArchive.rollback(it.sessions, plan), error = failure) }
                 }
-                else -> {
-                    _state.update { current ->
-                        current.copy(
-                            sessions = OptimisticArchive.rollback(current.sessions, plan),
-                            error = error,
-                        )
-                    }
-                }
-            }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                failure = error.message ?: "Could not update the archive state."
+                _state.update { it.copy(sessions = OptimisticArchive.rollback(it.sessions, plan), error = failure) }
+            } finally { _state.update { it.copy(isMutating = false) } }
+            // A chain may have partially succeeded; re-read server truth, retaining the error.
+            refresh(clearNotice = false, preserveError = failure != null)
         }
     }
-
-
-
 
     fun requestRename(session: SessionSummary) {
         if (rejectReadOnlyMutation(session)) return

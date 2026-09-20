@@ -44,34 +44,28 @@ internal fun List<SessionSummary>.filterNotSupersededSegments(): List<SessionSum
         val byId = rows.filter { !it.sessionId.isNullOrBlank() }.associateBy { it.sessionId!! }
         val children = rows.filter { !it.parentSessionId.isNullOrBlank() }.groupBy { it.parentSessionId!! }
 
-        fun titledDescendant(id: String, seen: MutableSet<String> = mutableSetOf()): Boolean {
-            if (!seen.add(id)) return false
-            return children[id].orEmpty().any { child ->
-                (!fallbackTitled(child) && !active(child)) || titledDescendant(child.sessionId.orEmpty(), seen)
-            }
+        // Reverse reachability once, rather than recursively walking every subtree.
+        // Both queues visit each ID once; cycles and deep histories stay bounded.
+        val titledAncestors = mutableSetOf<String>()
+        val ancestors = java.util.ArrayDeque<String>()
+        rows.filter { !fallbackTitled(it) && !active(it) }
+            .mapNotNull { it.parentSessionId }.forEach { ancestors.add(it) }
+        while (ancestors.isNotEmpty()) {
+            val id = ancestors.removeFirst()
+            if (!titledAncestors.add(id)) continue
+            byId[id]?.parentSessionId?.let { ancestors.add(it) }
         }
-
-        var provenSuperseded = mutableSetOf<String>()
-        var grew = true
-        while (grew) {
-            grew = false
-            for (row in rows) {
-                val sid = row.sessionId?.takeIf { it.isNotBlank() } ?: continue
-                if (sid in provenSuperseded || !fallbackTitled(row) || active(row)) continue
-                val parent = row.parentSessionId?.let { byId[it] }
-                val titledParent = parent?.takeIf { !fallbackTitled(it) }
-                // A parent already PROVEN superseded (titled descendant found in
-                // a previous pass) makes this leaf part of a dead branch; plain
-                // parenthood alone still never hides anything.
-                val parentDead = parent != null && parent.sessionId in provenSuperseded
-                if (titledDescendant(sid) || (titledParent != null && !active(titledParent)) ||
-                    (parentDead && parent != null && !active(parent))
-                ) {
-                    provenSuperseded.add(sid)
-                    grew = true
-                }
-            }
+        val provenSuperseded = mutableSetOf<String>()
+        val dead = java.util.ArrayDeque<String>()
+        fun mark(row: SessionSummary) {
+            val sid = row.sessionId?.takeIf { it.isNotBlank() } ?: return
+            if (fallbackTitled(row) && !active(row) && provenSuperseded.add(sid)) dead.add(sid)
         }
+        rows.forEach { row ->
+            val parent = byId[row.parentSessionId]
+            if (row.sessionId in titledAncestors || (parent != null && !fallbackTitled(parent) && !active(parent))) mark(row)
+        }
+        while (dead.isNotEmpty()) children[dead.removeFirst()].orEmpty().forEach(::mark)
         rows.filter { row -> row.sessionId?.takeIf { it.isNotBlank() }?.let { it !in provenSuperseded } ?: true }
     }
     return scoped

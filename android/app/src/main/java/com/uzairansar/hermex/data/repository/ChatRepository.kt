@@ -1,5 +1,7 @@
 package com.uzairansar.hermex.data.repository
 
+import com.uzairansar.hermex.ui.sessions.chainIdsFor
+
 import com.uzairansar.hermex.core.model.ChatMessage
 import com.uzairansar.hermex.core.model.ChatMessagePageMerger
 import com.uzairansar.hermex.core.model.ChatStartRequest
@@ -45,6 +47,8 @@ import com.uzairansar.hermex.data.db.CachedMessageEntity
 import com.uzairansar.hermex.data.db.CachedSessionEntity
 import com.uzairansar.hermex.data.db.ServerCacheOwnership
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.*
+import com.uzairansar.hermex.data.db.TranscriptCacheToken
 import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -62,6 +66,7 @@ data class ChatSessionSnapshot(
     val sessionId: String? = null,
     val pinned: Boolean? = null,
     val pinCacheGeneration: Long? = null,
+    val transcriptCacheToken: TranscriptCacheToken? = null,
     val workspace: String? = null,
     val model: String? = null,
     val modelProvider: String? = null,
@@ -86,6 +91,7 @@ class ChatRepository(
     private val cacheDao: CacheDao,
     private val cacheOwnership: ServerCacheOwnership,
     private val sse: SseStreamClient,
+    private val cacheScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
     val serverUrl: String = client.baseUrl.toString()
     val pinCacheGeneration: Long get() = cacheOwnership.generation(serverUrl)
@@ -106,13 +112,13 @@ class ChatRepository(
             val session = client.session(sessionId).session
                 ?: throw ApiError.InvalidResponse("The server did not return this conversation.")
             val messages = session.messages.orEmpty()
-            cacheSessionSnapshot(sessionId, session, messages, now, operationGeneration)
-            ResultState.Data(snapshotFromSession(session).copy(pinCacheGeneration = operationGeneration))
+            val token = cacheSessionSnapshot(sessionId, session, messages, now, operationGeneration)
+            ResultState.Data(snapshotFromSession(session).copy(pinCacheGeneration = operationGeneration, transcriptCacheToken = token))
         } catch (error: Throwable) {
             if (error is CancellationException) throw error
             if (error is ApiError.Unauthorized) return ResultState.Error(error.userMessage(), error)
             if (error is ApiError.Http && error.statusCode == 404) {
-                cacheOwnership.writeIfCurrent(serverUrl, operationGeneration) {
+                cacheOwnership.writeTranscriptSnapshot(serverUrl, sessionId, operationGeneration) {
                     cacheDao.purgeSession(serverUrl, sessionId)
                 }
                 return ResultState.Error(error.userMessage(), error)
@@ -135,12 +141,44 @@ class ChatRepository(
         val messages = session.messages.orEmpty().withLatestAssistantResponseSpeed(turnTokensPerSecond)
         val now = System.currentTimeMillis()
         val resolvedSessionId = session.sessionId?.takeIf { it.isNotBlank() } ?: sessionId
-        replaceCachedMessages(resolvedSessionId, messages, now, operationGeneration)
-        return snapshotFromSession(session, messagesOverride = messages)
+        val token = replaceCachedMessages(resolvedSessionId, messages, now, operationGeneration)
+        return snapshotFromSession(session, messagesOverride = messages).copy(transcriptCacheToken = token)
     }
 
     suspend fun pin(sessionId: String, pinned: Boolean): SessionMutationResponse =
         SessionRepository(client, cacheDao, cacheOwnership).pin(sessionId, pinned)
+
+    suspend fun archiveConversation(sessionId: String): String? {
+        val sessionsRepository = SessionRepository(client, cacheDao, cacheOwnership)
+        val page = sessionsRepository.loadSessions(includeArchived = true)
+        if (page !is ResultState.Data || page.fromCache) return "Reconnect to the server to archive this conversation."
+        val rows = page.value.sessions
+        val selected = rows.firstOrNull { it.sessionId == sessionId }
+            ?: return "The conversation is no longer available. Refresh and try again."
+        val ids = rows.chainIdsFor(selected.stableId).ifEmpty { listOf(sessionId) }
+        if (rows.any { it.sessionId in ids && it.isSessionReadOnly }) return "This session is read-only."
+        return sessionsRepository.archiveChain(ids, true)
+    }
+
+    fun enqueueTranscriptCache(sessionId: String, messages: List<ChatMessage>, token: TranscriptCacheToken?): Job? {
+        token ?: return null
+        val order = cacheOwnership.reserveTranscriptSave(serverUrl, sessionId)
+        return cacheScope.launch(Dispatchers.IO) {
+            try {
+                withTimeout(5_000) {
+                    val stable = messages.filterNot { it.id == "streaming" || it.id?.startsWith("optimistic-") == true || it.id?.startsWith("local-") == true }
+                    if (stable.isNotEmpty()) {
+                        val now = System.currentTimeMillis()
+                        val entities = stable.mapIndexed { index, message -> CachedMessageEntity.from(serverUrl, sessionId, message, index, now) }
+                        cacheOwnership.writeTranscriptIfCurrent(serverUrl, sessionId, token, order) {
+                            cacheDao.replaceMessages(serverUrl, sessionId, entities, now)
+                        }
+                    }
+                }
+            } catch (error: CancellationException) { throw error }
+            catch (_: Exception) { /* A failed optional cache write must not terminate the app. */ }
+        }
+    }
 
     suspend fun cacheMessages(sessionId: String, messages: List<ChatMessage>) {
         replaceCachedMessages(sessionId, messages)
@@ -306,8 +344,8 @@ class ChatRepository(
             currentMessages = currentMessages,
         )
         val now = System.currentTimeMillis()
-        replaceCachedMessages(sessionId, messages, now, operationGeneration)
-        return snapshotFromSession(session, messagesOverride = messages)
+        val token = replaceCachedMessages(sessionId, messages, now, operationGeneration)
+        return snapshotFromSession(session, messagesOverride = messages).copy(transcriptCacheToken = token)
     }
 
     suspend fun createSession(
@@ -365,8 +403,8 @@ class ChatRepository(
         messages: List<ChatMessage>,
         now: Long = System.currentTimeMillis(),
         generation: Long = cacheOwnership.generation(serverUrl),
-    ) {
-        cacheOwnership.writeIfCurrent(serverUrl, generation) {
+    ): TranscriptCacheToken? {
+        return cacheOwnership.writeTranscriptSnapshot(serverUrl, sessionId, generation) {
             cacheDao.replaceMessages(
                 serverUrl,
                 sessionId,
@@ -389,7 +427,8 @@ class ChatRepository(
             .firstOrNull { it.sessionId == sessionId }
             ?.toSummary()
         if (messages.isEmpty() && metadata == null) null else
-            snapshotFromCachedSession(messages, metadata).copy(pinCacheGeneration = operationGeneration)
+            snapshotFromCachedSession(messages, metadata).copy(pinCacheGeneration = operationGeneration,
+                transcriptCacheToken = cacheOwnership.transcriptToken(serverUrl, sessionId))
     }
 
     private suspend fun cacheSessionSnapshot(
@@ -398,10 +437,10 @@ class ChatRepository(
         messages: List<ChatMessage>,
         now: Long,
         generation: Long,
-    ) {
+    ): TranscriptCacheToken? {
         val resolvedSessionId = session.sessionId?.takeIf { it.isNotBlank() } ?: requestedSessionId
         val sessionEntity = CachedSessionEntity.from(serverUrl, session.toSummary(), now)
-        cacheOwnership.writeIfCurrent(serverUrl, generation) {
+        return cacheOwnership.writeTranscriptSnapshot(serverUrl, resolvedSessionId, generation) {
             sessionEntity?.let { cacheDao.upsertSessions(listOf(it)) }
             cacheDao.replaceMessages(
                 serverUrl,

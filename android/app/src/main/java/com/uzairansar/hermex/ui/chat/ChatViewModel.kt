@@ -312,6 +312,7 @@ data class ChatUiState(
     val isPinned: Boolean = false,
     val canPinConversation: Boolean = false,
     val isPinning: Boolean = false,
+    val isArchived: Boolean = false,
     val sessionWorkspacePath: String? = null,
     val sessionProfile: String? = null,
     val contextWindowSnapshot: ContextWindowSnapshot? = null,
@@ -417,6 +418,7 @@ class ChatViewModel internal constructor(
     private var pendingPromptJob: Job? = null
     private var workspaceSuggestionsJob: Job? = null
     private var workspaceSuggestionsGeneration = 0L
+    private var transcriptCacheToken: com.uzairansar.hermex.data.db.TranscriptCacheToken? = null
     private var draftPersistenceJob: Job? = null
     private val backgroundPromptsByTaskId = mutableMapOf<String, BackgroundTaskState>()
     private val pendingLocalUploads = linkedMapOf<String, PendingLocalAttachmentUpload>()
@@ -502,8 +504,8 @@ class ChatViewModel internal constructor(
     override fun onCleared() {
         isClearing = true
         draftPersistenceJob?.cancel()
-        runCatching { persistPendingState(durable = true) }
-        persistMaterializedTranscriptBlocking()
+        runCatching { persistPendingState() }
+        enqueueMaterializedTranscript()
         streamJob?.cancel()
         streamPacingJob?.cancel()
         streamRecoveryJob?.cancel()
@@ -654,6 +656,7 @@ class ChatViewModel internal constructor(
         fromCache: Boolean? = null,
         transform: (ChatUiState) -> ChatUiState = { it },
     ) {
+        transcriptCacheToken = snapshot.transcriptCacheToken
         _state.update { current ->
             val nextSessionModel = snapshot.model.nonBlank() ?: current.sessionModel
             val nextSessionModelProvider = snapshot.modelProvider.nonBlank() ?: current.sessionModelProvider
@@ -2055,7 +2058,7 @@ class ChatViewModel internal constructor(
     /** Metadata-only action: keep the draft, transcript and active stream intact. */
     fun togglePin() {
         val before = _state.value
-        if (isClearing || !before.canPinConversation || before.isLoading || before.isPinning ||
+        if (isClearing || !before.canPinConversation || before.isLoading || before.isPinning || before.isRunningSessionAction || before.isArchived ||
             before.isViewingCachedData || before.openSessionId != null) return
         val target = !before.isPinned
         _state.update { it.copy(isPinning = true, error = null) }
@@ -2076,6 +2079,23 @@ class ChatViewModel internal constructor(
             } finally {
                 _state.update { it.copy(isPinning = false) }
             }
+        }
+    }
+
+    fun archiveConversation() {
+        val before = _state.value
+        if (isClearing || !before.canPinConversation || before.isLoading || before.isPinning ||
+            before.isRunningSessionAction || before.isArchived || before.isViewingCachedData || before.openSessionId != null) return
+        _state.update { it.copy(isRunningSessionAction = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val error = repository.archiveConversation(sessionId)
+                if (!isClearing && _state.value.openSessionId == null)
+                    _state.update { it.copy(isArchived = error == null, error = error) }
+            } catch (error: CancellationException) { throw error }
+            catch (error: Exception) {
+                if (!isClearing) _state.update { it.copy(error = error.message ?: "Could not archive this conversation.") }
+            } finally { _state.update { it.copy(isRunningSessionAction = false) } }
         }
     }
 
@@ -2973,7 +2993,7 @@ class ChatViewModel internal constructor(
 
     private fun persistBackgroundTasks() {
         BackgroundTaskRegistry.save(registryKey, backgroundPromptsByTaskId)
-        persistPendingState(durable = true)
+        persistPendingState(durable = !isClearing)
     }
 
     private fun persistBtwTask(task: BtwTaskState?) {
@@ -3010,10 +3030,8 @@ class ChatViewModel internal constructor(
         if (snapshot.isViewingCachedData) return
         val materialized = eligibleForTranscriptCache(snapshot.messages)
         if (materialized.isEmpty()) return
-        if (transcriptCacheJob?.isActive == true) transcriptCacheJob?.cancel()
-        transcriptCacheJob = viewModelScope.launch {
-            runSuspendCatching { repository.cacheMessages(sessionId, materialized) }
-        }
+        transcriptCacheJob?.cancel()
+        transcriptCacheJob = repository.enqueueTranscriptCache(sessionId, materialized, transcriptCacheToken)
     }
 
     /** Stable messages only: optimistic echoes, streaming placeholder and local notices stay out of the cache. */
@@ -3024,18 +3042,12 @@ class ChatViewModel internal constructor(
 
     private var transcriptCacheJob: Job? = null
 
-    /**
-     * Synchronous variant used from onCleared: the viewModelScope is being cancelled, so
-     * the bounded write runs on its own to guarantee a warm cache on reopen.
-     */
-    private fun persistMaterializedTranscriptBlocking() {
+    /** Capture only immutable state here; filtering and storage survive the VM on IO. */
+    private fun enqueueMaterializedTranscript() {
         val snapshot = _state.value
         if (snapshot.isViewingCachedData) return
-        val materialized = eligibleForTranscriptCache(snapshot.messages)
-        if (materialized.isEmpty()) return
-        kotlinx.coroutines.runBlocking {
-            runCatching { repository.cacheMessages(sessionId, materialized) }
-        }
+        transcriptCacheJob?.cancel()
+        transcriptCacheJob = repository.enqueueTranscriptCache(sessionId, snapshot.messages, transcriptCacheToken)
     }
 
     private fun resumeAuxiliaryTasks() {

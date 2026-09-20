@@ -160,7 +160,13 @@ class SessionRepository(
     suspend fun archiveChain(sessionIds: List<String>, archived: Boolean): String? {
         var firstError: String? = null
         for (id in sessionIds) {
-            val response = archive(id, archived)
+            val response = try {
+                archive(id, archived)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                return error.userMessage()
+            }
             if (!response.isConfirmedMutation()) {
                 firstError = response.error?.trim()?.takeIf { it.isNotBlank() }
                     ?: "The server could not update the archive state."
@@ -171,10 +177,9 @@ class SessionRepository(
     }
 
     suspend fun archive(sessionId: String, archived: Boolean): SessionMutationResponse {
-        val cacheGeneration = cacheOwnership.generation(serverUrl)
         val response = client.archiveSession(sessionId, archived)
         if (response.isConfirmedMutation()) {
-            cacheOwnership.writeIfCurrent(serverUrl, cacheGeneration) {
+            cacheOwnership.invalidateAndClear(serverUrl) {
                 cacheDao.updateSessionArchived(serverUrl, sessionId, archived)
             }
         }

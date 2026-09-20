@@ -123,6 +123,7 @@ class AppContainer(private val application: Application) {
             client = client,
             cacheDao = database.cacheDao(),
             cacheOwnership = cacheOwnership,
+            cacheScope = applicationScope,
             sse = SseStreamClient(
                 baseUrl = baseUrl,
                 client = okHttpClient,
