@@ -149,7 +149,7 @@ class SessionRepository(
         val response = client.pinSession(sessionId, pinned)
         if (response.isConfirmedMutation()) {
             // Fence list/detail reads started before this metadata mutation.
-            cacheOwnership.invalidateAndClear(serverUrl) {
+            cacheOwnership.invalidateMetadataAndWrite(serverUrl) {
                 cacheDao.updateSessionPinned(serverUrl, sessionId, response.session?.pinned ?: pinned)
             }
         }
@@ -179,7 +179,7 @@ class SessionRepository(
     suspend fun archive(sessionId: String, archived: Boolean): SessionMutationResponse {
         val response = client.archiveSession(sessionId, archived)
         if (response.isConfirmedMutation()) {
-            cacheOwnership.invalidateAndClear(serverUrl) {
+            cacheOwnership.invalidateMetadataAndWrite(serverUrl) {
                 cacheDao.updateSessionArchived(serverUrl, sessionId, archived)
             }
         }

@@ -3,7 +3,8 @@ package com.uzairansar.hermex
 import android.app.Application
 import android.graphics.Bitmap
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.activity.compose.setContent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.lifecycle.ViewModelStore
@@ -23,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 @RunWith(AndroidJUnit4::class)
 class ArchiveStabilityInstrumentedTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val server = MockWebServer()
     private val archived = AtomicBoolean(false)
     private val mutations = AtomicInteger()
@@ -60,13 +61,13 @@ class ArchiveStabilityInstrumentedTest {
         val container = AppContainer(app)
         val config = android.content.res.Configuration(app.resources.configuration).apply { setLocale(java.util.Locale.FRANCE) }
         val resources = app.createConfigurationContext(config).resources
-        compose.setContent {
+        compose.runOnUiThread { compose.activity.setContent {
             androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalResources provides resources,
                 androidx.compose.ui.platform.LocalConfiguration provides config) {
                 HermexTheme { ChatRoute(sessionId = "fixture-archive", serverId = server.url("/").toString(), repository = container.chatRepository(server.url("/")),
                     onBack = { returned.set(true) }, onOpenWorkspace = {}, onOpenGit = {}) }
             }
-        }
+        } }
         compose.waitUntil(20000) { compose.onAllNodesWithText("Contrôle archivage").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Session actions").performClick()
         compose.onNodeWithText("Archiver").assertIsDisplayed().assertIsEnabled()

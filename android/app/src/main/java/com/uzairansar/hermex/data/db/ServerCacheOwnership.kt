@@ -11,7 +11,7 @@ class ServerCacheOwnership {
     private val transcriptRevisions = ConcurrentHashMap<Pair<String, String>, AtomicLong>()
     private val localOrders = ConcurrentHashMap<Pair<String, String>, AtomicLong>()
     private fun revision(server: String, session: String) = transcriptRevisions.getOrPut(server to session) { AtomicLong() }
-    fun transcriptToken(server: String, session: String) = TranscriptCacheToken(generation(server), revision(server, session).get())
+    fun transcriptToken(server: String, session: String) = TranscriptCacheToken(state(server).transcriptGeneration.get(), revision(server, session).get())
     fun reserveTranscriptSave(server: String, session: String): Long =
         localOrders.getOrPut(server to session) { AtomicLong() }.incrementAndGet()
 
@@ -20,19 +20,22 @@ class ServerCacheOwnership {
         writeIfCurrent(server, generation) {
             val next = revision(server, session).incrementAndGet()
             write()
-            token = TranscriptCacheToken(generation, next)
+            token = TranscriptCacheToken(state(server).transcriptGeneration.get(), next)
         }
         return token
     }
 
     suspend fun writeTranscriptIfCurrent(server: String, session: String, token: TranscriptCacheToken, order: Long, write: suspend () -> Unit) {
-        writeIfCurrent(server, token.generation) {
-            if (revision(server, session).get() == token.revision && localOrders[server to session]?.get() == order) write()
+        val state = state(server)
+        state.mutex.withLock {
+            if (state.transcriptGeneration.get() == token.generation && revision(server, session).get() == token.revision &&
+                localOrders[server to session]?.get() == order) write()
         }
     }
 
     private data class ServerState(
         val generation: AtomicLong = AtomicLong(0),
+        val transcriptGeneration: AtomicLong = AtomicLong(0),
         val mutex: Mutex = Mutex(),
     )
 
@@ -65,6 +68,12 @@ class ServerCacheOwnership {
         }
     }
 
+    /** Pin/archive fence metadata reads, but do not invalidate a displayed transcript. */
+    suspend fun invalidateMetadataAndWrite(serverUrl: String, write: suspend () -> Unit) {
+        val state = state(serverUrl)
+        state.mutex.withLock { state.generation.incrementAndGet(); write() }
+    }
+
     suspend fun invalidateAndClear(
         serverUrl: String,
         clear: suspend () -> Unit,
@@ -72,6 +81,7 @@ class ServerCacheOwnership {
         val state = state(serverUrl)
         state.mutex.withLock {
             state.generation.incrementAndGet()
+            state.transcriptGeneration.incrementAndGet()
             clear()
         }
     }

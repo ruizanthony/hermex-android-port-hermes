@@ -4084,7 +4084,7 @@ class ChatViewModel internal constructor(
                             val reconciled = result.value.copy(
                                 messages = result.value.messages.withLatestAssistantResponseSpeed(completedResponseTokensPerSecond),
                             )
-                            repository.cacheMessages(sessionId, reconciled.messages)
+                            repository.enqueueTranscriptCache(sessionId, reconciled.messages, reconciled.transcriptCacheToken)?.join()
                             applySessionSnapshot(reconciled, fromCache = false) {
                                 it.copy(
                                     sessionTitle = completedResponseTitleOverride ?: it.sessionTitle,

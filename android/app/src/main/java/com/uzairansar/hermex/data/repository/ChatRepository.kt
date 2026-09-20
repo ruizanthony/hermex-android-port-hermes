@@ -286,8 +286,8 @@ class ChatRepository(
         val messages = session.messages
             ?: throw ApiError.InvalidResponse("The server did not return the truncated transcript.")
         val resolvedSessionId = session.sessionId?.takeIf { value -> value.isNotBlank() } ?: sessionId
-        replaceCachedMessagesAfterMutation(resolvedSessionId, messages)
-        return snapshotFromSession(session)
+        val token = replaceCachedMessagesAfterMutation(resolvedSessionId, messages)
+        return snapshotFromSession(session).copy(transcriptCacheToken = token)
     }
 
     suspend fun clearSessionSnapshot(sessionId: String): ChatSessionClearResult {
@@ -301,8 +301,8 @@ class ChatRepository(
             ?: return ChatSessionClearResult(error = "The server did not return the cleared session.")
         val clearedMessages = session.messages.orEmpty()
         val resolvedSessionId = session.sessionId?.takeIf { it.isNotBlank() } ?: sessionId
-        replaceCachedMessagesAfterMutation(resolvedSessionId, clearedMessages)
-        return ChatSessionClearResult(snapshot = snapshotFromSession(session, messagesOverride = clearedMessages))
+        val token = replaceCachedMessagesAfterMutation(resolvedSessionId, clearedMessages)
+        return ChatSessionClearResult(snapshot = snapshotFromSession(session, messagesOverride = clearedMessages).copy(transcriptCacheToken = token))
     }
 
     suspend fun updateSessionConfiguration(
@@ -456,8 +456,9 @@ class ChatRepository(
     private suspend fun replaceCachedMessagesAfterMutation(
         sessionId: String,
         messages: List<ChatMessage>,
-    ) {
+    ): TranscriptCacheToken {
         val now = System.currentTimeMillis()
+        lateinit var token: TranscriptCacheToken
         cacheOwnership.invalidateAndClear(serverUrl) {
             cacheDao.replaceMessages(
                 serverUrl,
@@ -467,7 +468,9 @@ class ChatRepository(
                 },
                 now,
             )
+            token = cacheOwnership.transcriptToken(serverUrl, sessionId)
         }
+        return token
     }
 
     private fun snapshotFromSession(

@@ -10,6 +10,44 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class TranscriptSaveOrderingTest {
+    @Test fun pinDoesNotInvalidateDisplayedTranscriptSave() = metadataMutationKeepsTranscript("pin")
+    @Test fun archiveDoesNotInvalidateDisplayedTranscriptSave() = metadataMutationKeepsTranscript("archive")
+    private fun metadataMutationKeepsTranscript(action: String) = runBlocking {
+        val owner = ServerCacheOwnership(); val dao = RecordingCacheDao()
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse.Builder().code(200).body("{\"ok\":true}").build()); server.start()
+            val http = OkHttpClient(); val client = HermesApiClient(server.url("/"),http)
+            val repo = ChatRepository(client,dao,owner,SseStreamClient(server.url("/"),http){emptyList()})
+            val token = owner.transcriptToken(server.url("/").toString(),"s")
+            val sessions = SessionRepository(client,dao,owner)
+            if(action == "pin") sessions.pin("s",true) else sessions.archiveChain(listOf("s"),true)
+            repo.enqueueTranscriptCache("s",listOf(ChatMessage(id="new-tail",role="assistant")),token)!!.join()
+            assertEquals("new-tail",dao.replacedMessageBatches.lastOrNull()?.lastOrNull()?.toMessage()?.id)
+            owner.invalidateAndClear(server.url("/").toString()){}
+            val count = dao.replacedMessageBatches.size
+            repo.enqueueTranscriptCache("s",listOf(ChatMessage(id="logged-out",role="assistant")),token)!!.join()
+            assertEquals(count,dao.replacedMessageBatches.size)
+        }
+    }
+
+    @Test fun clearReturnsWritableTranscriptToken() = mutationReturnsToken(false)
+    @Test fun truncateReturnsWritableTranscriptToken() = mutationReturnsToken(true)
+    private fun mutationReturnsToken(truncate: Boolean) = runBlocking {
+        val owner = ServerCacheOwnership(); val dao = RecordingCacheDao()
+        MockWebServer().use { server ->
+            server.enqueue(MockResponse.Builder().code(200).body("""{"ok":true,"session":{"session_id":"s","messages":[]}}""").build()); server.start()
+            val http = OkHttpClient()
+            val repo = ChatRepository(HermesApiClient(server.url("/"),http),dao,owner,SseStreamClient(server.url("/"),http){emptyList()})
+            val old = owner.transcriptToken(server.url("/").toString(),"s")
+            val snapshot = if(truncate) repo.truncateSessionSnapshot("s",0) else repo.clearSessionSnapshot("s").snapshot!!
+            assertNotNull(snapshot.transcriptCacheToken)
+            repo.enqueueTranscriptCache("s",listOf(ChatMessage(id="new-tail",role="assistant")),snapshot.transcriptCacheToken)!!.join()
+            assertEquals("new-tail",dao.replacedMessageBatches.last().last().toMessage()!!.id)
+            repo.enqueueTranscriptCache("s",listOf(ChatMessage(id="old",role="assistant")),old)!!.join()
+            assertEquals("new-tail",dao.replacedMessageBatches.last().last().toMessage()!!.id)
+        }
+    }
+
     @Test fun missingSessionPurgesAndRejectsOldExitSave() = runBlocking {
         val owner = ServerCacheOwnership(); val dao = RecordingCacheDao()
         MockWebServer().use { server ->
