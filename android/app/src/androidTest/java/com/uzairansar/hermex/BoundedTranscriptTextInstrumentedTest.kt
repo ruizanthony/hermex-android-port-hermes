@@ -4,7 +4,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.uzairansar.hermex.ui.chat.BoundedTranscriptText
 import com.uzairansar.hermex.ui.chat.MarkdownText
@@ -12,13 +12,19 @@ import com.uzairansar.hermex.ui.chat.TRANSCRIPT_CHUNK_CHARACTERS
 import com.uzairansar.hermex.ui.chat.markdownPlainTextChunks
 import com.uzairansar.hermex.ui.theme.HermexTheme
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class BoundedTranscriptTextInstrumentedTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @Before fun prepareReleaseCompatibleHost() {
+        compose.runOnUiThread {
+            compose.activity.findViewById<android.view.ViewGroup>(android.R.id.content).removeAllViews()
+        }
+    }
     private val raw = "BEGIN " + "abc e\u0301 \uD83D\uDE00\r\n".repeat(4_000) + " FINAL SENTINEL"
 
     @Test fun boundedPreviewAndVirtualReaderReachTheExactEnd() {
