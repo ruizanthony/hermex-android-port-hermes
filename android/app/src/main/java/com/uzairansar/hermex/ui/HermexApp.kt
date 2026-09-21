@@ -44,6 +44,9 @@ import androidx.navigation.navArgument
 import com.uzairansar.hermex.AppContainer
 import com.uzairansar.hermex.BuildConfig
 import com.uzairansar.hermex.data.repository.AuthState
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.uzairansar.hermex.ui.chat.ActiveConversationContext
+import com.uzairansar.hermex.ui.chat.ActiveChatContent
 import com.uzairansar.hermex.ui.chat.ChatRoute
 import com.uzairansar.hermex.ui.git.GitRoute
 import com.uzairansar.hermex.ui.kanban.KanbanLabRoute
@@ -84,6 +87,9 @@ fun HermexApp(
     )
     val activeAccount = (authState as? AuthState.LoggedIn)?.account
     val activeServerKey = (authState as? AuthState.LoggedIn)?.server?.toString()
+    val navigationContext: ActiveConversationContext = viewModel()
+    val navigationIdentity = "$activeServerKey:${activeAccount?.id}"
+    val activeConversationIds = navigationContext.idsFor(navigationIdentity)
     val headerLogoColorHex = activeAccount?.headerLogoColorHex ?: localHeaderLogoColorHex
     var observedServerKey by rememberSaveable { mutableStateOf(activeServerKey) }
     var wasLoggedIn by rememberSaveable { mutableStateOf(activeServerKey != null) }
@@ -104,7 +110,10 @@ fun HermexApp(
     }
 
     LaunchedEffect(authState) {
-        if (authState !is AuthState.LoggedIn) profileShortcutPublisher.publish(emptyList())
+        if (authState !is AuthState.LoggedIn) {
+            navigationContext.clear()
+            profileShortcutPublisher.publish(emptyList())
+        }
     }
 
     LaunchedEffect(container.authRepository) {
@@ -142,6 +151,7 @@ fun HermexApp(
                     regularWidthDestinationRoute(rawRoute, usesRegularWidthShell)
                 }
                 if (route != null) {
+                    navigationContext.clear()
                     val requestedServerId = intent.hermexServerId()
                     val loggedIn = latestAuthState as? AuthState.LoggedIn
                     val isDebugFixture = BuildConfig.DEBUG && route.startsWith("kanban-lab?scenario=")
@@ -332,6 +342,7 @@ fun HermexApp(
                             shortcutProfile = entry.arguments?.getString("shortcutProfile"),
                             initialArchived = entry.arguments?.getBoolean("showArchived") == true,
                             selectedSessionId = selectedSessionId.takeIf { usesRegularWidthLayout },
+                            onActiveConversationIdsChanged = { navigationContext.update(navigationIdentity, it) },
                             onOpenChat = { sessionId ->
                                 if (usesRegularWidthLayout) selectSession(sessionId, false, false)
                                 else navController.navigateSingleTop("chat/$sessionId")
@@ -371,23 +382,27 @@ fun HermexApp(
                             },
                             detail = {
                                 if (server != null && detailSessionId != null) {
-                                    ChatRoute(
-                                        sessionId = detailSessionId,
-                                        serverId = activeServerKey ?: server.toString(),
-                                        viewModelKey = "chat:$activeServerKey:$detailSessionId",
-                                        repository = container.chatRepository(server),
-                                        gitRepository = container.gitRepository(server),
-                                        workspaceRepository = container.workspaceRepository(server),
-                                        localSettingsRepository = container.localSettingsRepository,
-                                        activeHeaderColorHex = headerLogoColorHex,
-                                        sharedDraftStore = container.sharedDraftStore,
-                                        consumeSharedDraft = selectedConsumesShare,
-                                        autoStartVoice = selectedAutoStartsVoice,
-                                        onOpenChat = { sessionId -> selectSession(sessionId, false, false) },
-                                        onBack = { selectedSessionId = null },
-                                        onOpenWorkspace = { navController.navigate("workspace/$detailSessionId") },
-                                        onOpenGit = { navController.navigate("git/$detailSessionId") },
-                                    )
+                                    ActiveChatContent("$activeServerKey:$detailSessionId") {
+                                        ChatRoute(
+                                            sessionId = detailSessionId,
+                                            serverId = activeServerKey ?: server.toString(),
+                                            viewModelKey = "chat:$activeServerKey:$detailSessionId",
+                                            repository = container.chatRepository(server),
+                                            gitRepository = container.gitRepository(server),
+                                            workspaceRepository = container.workspaceRepository(server),
+                                            localSettingsRepository = container.localSettingsRepository,
+                                            activeHeaderColorHex = headerLogoColorHex,
+                                            sharedDraftStore = container.sharedDraftStore,
+                                            consumeSharedDraft = selectedConsumesShare,
+                                            autoStartVoice = selectedAutoStartsVoice,
+                                            activeConversationIds = activeConversationIds,
+                                            onNavigateConversation = { selectSession(it, false, false) },
+                                            onOpenChat = { sessionId -> selectSession(sessionId, false, false) },
+                                            onBack = { selectedSessionId = null },
+                                            onOpenWorkspace = { navController.navigate("workspace/$detailSessionId") },
+                                            onOpenGit = { navController.navigate("git/$detailSessionId") },
+                                        )
+                                    }
                                 } else {
                                     RegularWidthEmptyDetail(
                                         onNewChat = {
@@ -419,27 +434,31 @@ fun HermexApp(
                     if (server == null) {
                         OnboardingRoute(container.authRepository) {}
                     } else {
-                        ChatRoute(
-                            sessionId = requireNotNull(entry.arguments?.getString("sessionId")),
-                            serverId = activeServerKey ?: server.toString(),
-                            viewModelKey = "chat:$activeServerKey:${entry.arguments?.getString("sessionId")}",
-                            repository = container.chatRepository(server),
-                            gitRepository = container.gitRepository(server),
-                            workspaceRepository = container.workspaceRepository(server),
-                            localSettingsRepository = container.localSettingsRepository,
-                            activeHeaderColorHex = headerLogoColorHex,
-                            sharedDraftStore = container.sharedDraftStore,
-                            consumeSharedDraft = entry.arguments?.getBoolean("consumeShare") == true,
-                            autoStartVoice = entry.arguments?.getBoolean("autoStartVoice") == true,
-                            onOpenChat = { sessionId -> navController.navigateSingleTop("chat/$sessionId") },
-                            onBack = { navController.popBackStack() },
-                            onOpenWorkspace = {
-                                navController.navigate("workspace/${requireNotNull(entry.arguments?.getString("sessionId"))}")
-                            },
-                            onOpenGit = {
-                                navController.navigate("git/${requireNotNull(entry.arguments?.getString("sessionId"))}")
-                            },
-                        )
+                        val initialSessionId = requireNotNull(entry.arguments?.getString("sessionId"))
+                        var detailSessionId by rememberSaveable(activeServerKey, initialSessionId) {
+                            mutableStateOf(initialSessionId)
+                        }
+                        ActiveChatContent("$activeServerKey:$detailSessionId") {
+                            ChatRoute(
+                                sessionId = detailSessionId,
+                                serverId = activeServerKey ?: server.toString(),
+                                viewModelKey = "chat:$activeServerKey:$detailSessionId",
+                                repository = container.chatRepository(server),
+                                gitRepository = container.gitRepository(server),
+                                workspaceRepository = container.workspaceRepository(server),
+                                localSettingsRepository = container.localSettingsRepository,
+                                activeHeaderColorHex = headerLogoColorHex,
+                                sharedDraftStore = container.sharedDraftStore,
+                                consumeSharedDraft = detailSessionId == initialSessionId && entry.arguments?.getBoolean("consumeShare") == true,
+                                autoStartVoice = detailSessionId == initialSessionId && entry.arguments?.getBoolean("autoStartVoice") == true,
+                                activeConversationIds = activeConversationIds,
+                                onNavigateConversation = { detailSessionId = it },
+                                onOpenChat = { detailSessionId = it },
+                                onBack = { navController.popBackStack() },
+                                onOpenWorkspace = { navController.navigate("workspace/${Uri.encode(detailSessionId)}") },
+                                onOpenGit = { navController.navigate("git/${Uri.encode(detailSessionId)}") },
+                            )
+                        }
                     }
                 }
                 composable(

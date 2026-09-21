@@ -260,6 +260,8 @@ fun ChatRoute(
     consumeSharedDraft: Boolean = false,
     autoStartVoice: Boolean = false,
     onOpenChat: (String) -> Unit = {},
+    activeConversationIds: List<String> = emptyList(),
+    onNavigateConversation: (String) -> Unit = {},
     onBack: () -> Unit,
     onOpenWorkspace: () -> Unit,
     onOpenGit: () -> Unit,
@@ -1216,30 +1218,42 @@ fun ChatRoute(
         }
         val isRefreshingIndicator by viewModel.isRefreshingConversation.collectAsStateWithLifecycle()
 
-        ChatTopBar(
-            title = state.headerTitle,
-            subtitle = state.headerSubtitle,
-            isRefreshing = isRefreshingIndicator,
-            hasRepository = gitState.hasRepository,
-            showsFilesButton = chatDisplaySettings.showsChatFilesButton,
-            showsGitControls = chatDisplaySettings.showsChatGitControls,
-            onBack = onBack,
-            onOpenWorkspace = onOpenWorkspace,
-            onOpenGit = onOpenGit,
-            canClearConversation = state.messages.isNotEmpty() &&
-                !state.isStreaming &&
-                !state.isRunningSessionAction &&
-                !state.isViewingCachedData,
-            onClearConversation = { showsClearConversationConfirmation = true },
-            isPinned = state.isPinned,
-            canPinConversation = state.canPinConversation && !state.isPinning && !state.isLoading && !state.isRunningSessionAction && !state.isArchived &&
-                !state.isViewingCachedData && state.openSessionId == null,
-            onTogglePin = viewModel::togglePin,
-            canArchiveConversation = state.canPinConversation && !state.isLoading && !state.isPinning &&
-                !state.isRunningSessionAction && !state.isViewingCachedData && !state.isArchived && state.openSessionId == null,
-            onArchive = viewModel::archiveConversation,
-            modifier = Modifier.onSizeChanged { topBarHeightPx = it.height },
-        )
+        Column(Modifier.onSizeChanged { topBarHeightPx = it.height }) {
+            ChatTopBar(
+                title = state.headerTitle,
+                subtitle = state.headerSubtitle,
+                isRefreshing = isRefreshingIndicator,
+                hasRepository = gitState.hasRepository,
+                showsFilesButton = chatDisplaySettings.showsChatFilesButton,
+                showsGitControls = chatDisplaySettings.showsChatGitControls,
+                onBack = onBack,
+                onOpenWorkspace = onOpenWorkspace,
+                onOpenGit = onOpenGit,
+                canClearConversation = state.messages.isNotEmpty() &&
+                    !state.isStreaming &&
+                    !state.isRunningSessionAction &&
+                    !state.isViewingCachedData,
+                onClearConversation = { showsClearConversationConfirmation = true },
+                isPinned = state.isPinned,
+                canPinConversation = state.canPinConversation && !state.isPinning && !state.isLoading && !state.isRunningSessionAction && !state.isArchived &&
+                    !state.isViewingCachedData && state.openSessionId == null,
+                onTogglePin = viewModel::togglePin,
+                canArchiveConversation = state.canPinConversation && !state.isLoading && !state.isPinning &&
+                    !state.isRunningSessionAction && !state.isViewingCachedData && !state.isArchived && state.openSessionId == null,
+                onArchive = viewModel::archiveConversation,
+            )
+            val navigation = remember(activeConversationIds) { ActiveConversationNavigation(activeConversationIds) }
+            if (sessionId in navigation.ids) {
+                ActiveConversationControls(
+                    previousId = navigation.neighbor(sessionId, next = false),
+                    nextId = navigation.neighbor(sessionId, next = true),
+                    // Until archive has an application-owned durable coordinator, do not cancel it by navigation.
+                    enabled = !state.isRunningSessionAction && !state.isPinning && !state.isArchived &&
+                        !state.isUploadingAttachment && state.openSessionId == null,
+                    onNavigate = onNavigateConversation,
+                )
+            }
+        }
     }
 
     turnDiffPresentation?.let { presentation ->

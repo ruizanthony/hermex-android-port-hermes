@@ -1,0 +1,4 @@
+<resources>
+    <string name="active_conversation_previous">이전 대화</string>
+    <string name="active_conversation_next">다음 대화</string>
+</resources>

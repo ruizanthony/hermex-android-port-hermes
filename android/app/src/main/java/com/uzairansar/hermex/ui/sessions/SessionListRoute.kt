@@ -156,6 +156,7 @@ fun SessionListRoute(
     shortcutProfile: String? = null,
     initialArchived: Boolean = false,
     selectedSessionId: String? = null,
+    onActiveConversationIdsChanged: (List<String>) -> Unit = {},
     onOpenChat: (String) -> Unit,
     onOpenVoiceChat: (String) -> Unit,
     onOpenSharedDraft: (String) -> Unit,
@@ -196,6 +197,8 @@ fun SessionListRoute(
         },
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val activeIds = state.activeConversationIds
+    LaunchedEffect(activeIds) { onActiveConversationIdsChanged(activeIds) }
     val motion = LocalHermexMotionScheme.current
     val motionPolicy = LocalHermexMotionPolicy.current
     val headerLogoColorHex = loggedIn.account.headerLogoColorHex

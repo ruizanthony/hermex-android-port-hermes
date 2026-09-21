@@ -1,0 +1,4 @@
+<resources>
+    <string name="active_conversation_previous">上一个对话</string>
+    <string name="active_conversation_next">下一个对话</string>
+</resources>

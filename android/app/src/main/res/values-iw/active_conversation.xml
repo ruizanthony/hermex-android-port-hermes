@@ -1,0 +1,4 @@
+<resources>
+    <string name="active_conversation_previous">השיחה הקודמת</string>
+    <string name="active_conversation_next">השיחה הבאה</string>
+</resources>

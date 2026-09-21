@@ -167,6 +167,13 @@ data class SessionListUiState(
                 .collapseCompressionSegments(matches.map { it.stableId }.toSet())
         }
 
+    /** Navigation consumes the exact filtered display projection, not raw history rows. */
+    val activeConversationIds: List<String>
+        get() = if (showArchived || isSwitchingProfile) emptyList() else visibleSessions
+            .filter { it.archived != true }
+            .mapNotNull { it.sessionId?.takeIf(String::isNotBlank) }
+            .distinct()
+
     val scheduledSessionGroups: ScheduledSessionGroups
         get() {
             val visible = visibleSessions

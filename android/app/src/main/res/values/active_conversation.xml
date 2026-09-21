@@ -1,0 +1,4 @@
+<resources>
+    <string name="active_conversation_previous">Previous conversation</string>
+    <string name="active_conversation_next">Next conversation</string>
+</resources>
