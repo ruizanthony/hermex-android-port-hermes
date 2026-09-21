@@ -2,6 +2,8 @@ package com.uzairansar.hermex.core.network
 
 import com.uzairansar.hermex.core.model.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -38,6 +40,7 @@ class HermesApiClient(
     private val onUnauthorized: (HttpUrl) -> Unit = {},
     private val onProfileChanged: suspend (HttpUrl, String) -> Unit = { _, _ -> },
     private val publicMediaDns: Dns = PublicNetworkDns,
+    private val profileMutationGate: Mutex = Mutex(),
 ) {
     private val jsonMediaType = "application/json".toMediaType()
     @OptIn(ExperimentalSerializationApi::class)
@@ -219,10 +222,10 @@ class HermesApiClient(
     suspend fun modelsLive(): ModelsLiveResponse = get(Endpoint.ModelsLive)
     suspend fun commands(): CommandsResponse = get(Endpoint.Commands)
     suspend fun profiles(): ProfilesResponse = get(Endpoint.Profiles)
-    suspend fun switchProfile(profile: String): ProfileSwitchResponse {
+    suspend fun switchProfile(profile: String): ProfileSwitchResponse = profileMutationGate.withLock {
         val response: ProfileSwitchResponse = post(Endpoint.SwitchProfile, SwitchProfileRequest(profile))
         if (response.error.isNullOrBlank()) onProfileChanged(baseUrl, profile)
-        return response
+        response
     }
     suspend fun createProfile(
         name: String,

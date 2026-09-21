@@ -157,6 +157,7 @@ fun SessionListRoute(
     initialArchived: Boolean = false,
     selectedSessionId: String? = null,
     onActiveConversationIdsChanged: (List<String>) -> Unit = {},
+    onArchiveMembershipChanged: (String, List<SessionSummary>) -> Unit = { _, _ -> },
     onOpenChat: (String) -> Unit,
     onOpenVoiceChat: (String) -> Unit,
     onOpenSharedDraft: (String) -> Unit,
@@ -181,6 +182,8 @@ fun SessionListRoute(
                     panelsRepository = container.panelsRepository(loggedIn.server),
                     localSettingsRepository = container.localSettingsRepository,
                     serverId = loggedIn.server.toString(),
+                    archiveCoordinator = container.archiveCoordinator,
+                    archiveAccount = loggedIn.account.id,
                 ) as T
             }
 
@@ -191,6 +194,8 @@ fun SessionListRoute(
                     panelsRepository = container.panelsRepository(loggedIn.server),
                     localSettingsRepository = container.localSettingsRepository,
                     serverId = loggedIn.server.toString(),
+                    archiveCoordinator = container.archiveCoordinator,
+                    archiveAccount = loggedIn.account.id,
                     savedStateHandle = extras.createSavedStateHandle(),
                 ) as T
             }
@@ -198,7 +203,10 @@ fun SessionListRoute(
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     val activeIds = state.activeConversationIds
-    LaunchedEffect(activeIds) { onActiveConversationIdsChanged(activeIds) }
+    LaunchedEffect(activeIds, state.activeProfileName, state.sessions) {
+        onArchiveMembershipChanged(state.activeProfileName ?: "default", state.sessions)
+        onActiveConversationIdsChanged(activeIds)
+    }
     val motion = LocalHermexMotionScheme.current
     val motionPolicy = LocalHermexMotionPolicy.current
     val headerLogoColorHex = loggedIn.account.headerLogoColorHex

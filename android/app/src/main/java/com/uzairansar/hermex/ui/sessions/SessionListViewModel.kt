@@ -32,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import com.uzairansar.hermex.data.repository.project
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -264,13 +266,19 @@ class SessionListViewModel(
     private val localSettingsRepository: LocalSettingsRepository,
     private val serverId: String,
     private val savedStateHandle: SavedStateHandle? = null,
+    private val archiveCoordinator: com.uzairansar.hermex.data.repository.DurableArchiveCoordinator? = null,
+    private val archiveAccount: String = "",
 ) : ViewModel() {
     private val eventChannel = Channel<SessionListEvent>(Channel.BUFFERED)
     internal val events = eventChannel.receiveAsFlow()
     private val restoredState = savedStateHandle?.get<String>(SAVED_TRANSIENT_STATE)
         ?.let { encoded -> runCatching { HermesJson.decodeFromString<SessionListSavedState>(encoded) }.getOrNull() }
     private val _state = MutableStateFlow(restoredState?.toUiState() ?: SessionListUiState(isLoading = true))
-    val state: StateFlow<SessionListUiState> = _state
+    val state: StateFlow<SessionListUiState> = if (archiveCoordinator == null) _state else
+        kotlinx.coroutines.flow.combine(_state, archiveCoordinator.state) { raw, archive ->
+            val identity = com.uzairansar.hermex.data.repository.ArchiveIdentity(serverId, archiveAccount, raw.activeProfileName ?: "default")
+            raw.copy(sessions = archive.project(identity, raw.sessions, raw.showArchived))
+        }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, _state.value)
     private var refreshJob: Job? = null
     private var refreshGeneration = 0L
     private var remoteSearchJob: Job? = null
@@ -627,6 +635,11 @@ class SessionListViewModel(
             _state.update { it.copy(error = "This session is read-only.") }
             return
         }
+        if (plan.archive && archiveCoordinator != null) {
+            val identity = com.uzairansar.hermex.data.repository.ArchiveIdentity(serverId, archiveAccount, _state.value.activeProfileName ?: "default")
+            archiveCoordinator.enqueue(identity, session.sessionId ?: return, plan.chainIds)
+            return
+        }
         ++refreshGeneration
         refreshJob?.cancel()
         _state.update { it.copy(sessions = plan.updated, isMutating = true, isLoading = false, error = null, notice = null) }
@@ -635,6 +648,8 @@ class SessionListViewModel(
             try {
                 failure = repository.archiveChain(plan.chainIds, plan.archive)
                 if (failure == null) {
+                    if (!plan.archive) archiveCoordinator?.restored(
+                        com.uzairansar.hermex.data.repository.ArchiveIdentity(serverId, archiveAccount, _state.value.activeProfileName ?: "default"), plan.chainIds)
                     _state.update { it.copy(notice = if (plan.archive) "Session archived." else "Session restored.") }
                 } else {
                     _state.update { it.copy(sessions = OptimisticArchive.rollback(it.sessions, plan), error = failure) }

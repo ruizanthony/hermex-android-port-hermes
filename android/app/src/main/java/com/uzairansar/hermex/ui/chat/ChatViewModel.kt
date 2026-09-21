@@ -2082,6 +2082,14 @@ class ChatViewModel internal constructor(
         }
     }
 
+    /** Synchronous acceptance only: the application worker owns persistence and networking. */
+    fun enqueueArchive(enqueue: (String) -> Boolean): Boolean {
+        val before = _state.value
+        if (isClearing || !before.canPinConversation || before.isLoading || before.isPinning ||
+            before.isRunningSessionAction || before.isArchived || before.isViewingCachedData || before.openSessionId != null) return false
+        return enqueue(before.sessionProfile?.takeIf(String::isNotBlank) ?: "default")
+    }
+
     fun archiveConversation() {
         val before = _state.value
         if (isClearing || !before.canPinConversation || before.isLoading || before.isPinning ||

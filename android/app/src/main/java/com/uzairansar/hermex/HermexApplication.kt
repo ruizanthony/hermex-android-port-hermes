@@ -28,6 +28,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -89,6 +90,30 @@ class AppContainer(private val application: Application) {
         },
     )
 
+    private val archiveProfileGate = kotlinx.coroutines.sync.Mutex()
+
+    val archiveCoordinator = com.uzairansar.hermex.data.repository.DurableArchiveCoordinator(
+        com.uzairansar.hermex.data.repository.PreferencesArchiveJournal(application),
+        com.uzairansar.hermex.data.repository.RepositoryArchiveBackend(
+            client = { apiClient(it.server.toHttpUrl()) },
+            repository = { sessionRepository(it.server.toHttpUrl()) },
+            gate = archiveProfileGate,
+            authVersion = { authRepository.currentAuthGeneration(it.server.toHttpUrl()) },
+            authorized = ::archiveAuthorized,
+        ),
+        applicationScope,
+        ::archiveAuthorized,
+    )
+
+    private fun archiveAuthorized(identity: com.uzairansar.hermex.data.repository.ArchiveIdentity): Boolean {
+        val current = authRepository.state.value as? com.uzairansar.hermex.data.repository.AuthState.LoggedIn
+        return current?.server?.toString() == identity.server && current.account.id == identity.account
+    }
+
+    init {
+        applicationScope.launch { authRepository.state.collect { archiveCoordinator.resume() } }
+    }
+
     fun apiClient(baseUrl: HttpUrl): HermesApiClient {
         val authGeneration = authRepository.currentAuthGeneration(baseUrl)
         return HermesApiClient(
@@ -101,6 +126,7 @@ class AppContainer(private val application: Application) {
             onUnauthorized = { server ->
                 applicationScope.launch { authRepository.handleUnauthorized(server, authGeneration) }
             },
+            profileMutationGate = archiveProfileGate,
             onProfileChanged = { server, _ ->
                 val serverUrl = server.toString()
                 cacheOwnership.invalidateAndClear(serverUrl) { database.cacheDao().clearServer(serverUrl) }

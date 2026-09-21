@@ -89,7 +89,11 @@ fun HermexApp(
     val activeServerKey = (authState as? AuthState.LoggedIn)?.server?.toString()
     val navigationContext: ActiveConversationContext = viewModel()
     val navigationIdentity = "$activeServerKey:${activeAccount?.id}"
+    val archiveState by container.archiveCoordinator.state.collectAsStateWithLifecycle()
+    val archiveIdentity = com.uzairansar.hermex.data.repository.ArchiveIdentity(
+        activeServerKey.orEmpty(), activeAccount?.id.orEmpty(), navigationContext.profile)
     val activeConversationIds = navigationContext.idsFor(navigationIdentity)
+        .filterNot { it in archiveState.hidden(archiveIdentity) }
     val headerLogoColorHex = activeAccount?.headerLogoColorHex ?: localHeaderLogoColorHex
     var observedServerKey by rememberSaveable { mutableStateOf(activeServerKey) }
     var wasLoggedIn by rememberSaveable { mutableStateOf(activeServerKey != null) }
@@ -229,6 +233,7 @@ fun HermexApp(
 
     HermexTheme(themeMode = themeMode) {
         CompositionLocalProvider(LocalHermexHapticsEnabled provides hapticsEnabled) {
+            Box(Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
                 startDestination = if (authState is AuthState.LoggedIn) "sessions" else "onboarding",
@@ -343,6 +348,7 @@ fun HermexApp(
                             initialArchived = entry.arguments?.getBoolean("showArchived") == true,
                             selectedSessionId = selectedSessionId.takeIf { usesRegularWidthLayout },
                             onActiveConversationIdsChanged = { navigationContext.update(navigationIdentity, it) },
+                            onArchiveMembershipChanged = { profile, rows -> navigationContext.updateMembership(navigationIdentity, profile, rows) },
                             onOpenChat = { sessionId ->
                                 if (usesRegularWidthLayout) selectSession(sessionId, false, false)
                                 else navController.navigateSingleTop("chat/$sessionId")
@@ -396,6 +402,9 @@ fun HermexApp(
                                             consumeSharedDraft = selectedConsumesShare,
                                             autoStartVoice = selectedAutoStartsVoice,
                                             activeConversationIds = activeConversationIds,
+                                            archiveCoordinator = container.archiveCoordinator,
+                                            archiveIdentity = { profile -> archiveIdentity.copy(profile = profile) },
+                                            archiveMembers = { navigationContext.members(navigationIdentity, it) },
                                             onNavigateConversation = { selectSession(it, false, false) },
                                             onOpenChat = { sessionId -> selectSession(sessionId, false, false) },
                                             onBack = { selectedSessionId = null },
@@ -452,6 +461,9 @@ fun HermexApp(
                                 consumeSharedDraft = detailSessionId == initialSessionId && entry.arguments?.getBoolean("consumeShare") == true,
                                 autoStartVoice = detailSessionId == initialSessionId && entry.arguments?.getBoolean("autoStartVoice") == true,
                                 activeConversationIds = activeConversationIds,
+                                archiveCoordinator = container.archiveCoordinator,
+                                archiveIdentity = { profile -> archiveIdentity.copy(profile = profile) },
+                                archiveMembers = { navigationContext.members(navigationIdentity, it) },
                                 onNavigateConversation = { detailSessionId = it },
                                 onOpenChat = { detailSessionId = it },
                                 onBack = { navController.popBackStack() },
@@ -600,6 +612,18 @@ fun HermexApp(
                         }
                     }
                 }
+            }
+            val archiveError = archiveState.errors(activeServerKey.orEmpty(), activeAccount?.id.orEmpty()).firstOrNull()
+            if (archiveError != null) {
+                androidx.compose.material3.Snackbar(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    action = {
+                        androidx.compose.material3.TextButton(onClick = { container.archiveCoordinator.retry(archiveError.key) }) {
+                            Text(localizedString("Retry"))
+                        }
+                    },
+                ) { Text(archiveError.error.orEmpty()) }
+            }
             }
         }
     }
