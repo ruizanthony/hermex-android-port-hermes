@@ -7,6 +7,14 @@ import androidx.lifecycle.ViewModelStore
 class ActiveChatOwner : ViewModel() {
     private var identity: String? = null
     private var store = ViewModelStore()
+    private var generation = 0L
+    data class Lease(val identity: String, val generation: Long, val store: ViewModelStore)
+
+    fun acquire(identity: String): Lease = Lease(identity, ++generation, select(identity))
+
+    fun release(lease: Lease) {
+        if (lease.generation == generation && lease.store === store) release(lease.identity)
+    }
 
     fun select(identity: String): ViewModelStore {
         if (this.identity != identity) {

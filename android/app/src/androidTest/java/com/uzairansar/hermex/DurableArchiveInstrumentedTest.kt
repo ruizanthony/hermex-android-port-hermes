@@ -4,7 +4,8 @@ import android.app.Application
 import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.activity.compose.setContent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.uzairansar.hermex.data.repository.*
@@ -24,11 +25,15 @@ import java.util.concurrent.TimeUnit
 /** Synthetic server; compiling this test is not evidence of on-device execution. */
 @RunWith(AndroidJUnit4::class)
 class DurableArchiveInstrumentedTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val server = MockWebServer()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val release = CountDownLatch(1)
-    @After fun close() { release.countDown(); scope.cancel(); server.close() }
+    @After fun close() {
+        release.countDown()
+        compose.runOnUiThread { compose.activity.setContent {} }
+        scope.cancel(); server.close()
+    }
 
     @Test fun nextArchiveAndSwipeWorkWhileFirstResponseIsHeldAndAcknowledgementDoesNotNavigate() {
         val archived = CopyOnWriteArrayList<String>()
@@ -65,7 +70,7 @@ class DurableArchiveInstrumentedTest {
         val resources = app.createConfigurationContext(config).resources
         var selected = "a"
         var backs = 0
-        compose.setContent {
+        compose.runOnUiThread { compose.activity.setContent {
             var selection by remember { mutableStateOf("a") }
             val projection by queue.state.collectAsState()
             val ids = listOf("a", "b", "c", "d").filterNot { it in projection.hidden(identity) }
@@ -85,6 +90,7 @@ class DurableArchiveInstrumentedTest {
                 }
             }
         }
+        }
         fun awaitTranscript(id: String) {
             compose.waitUntil(20_000) { compose.onAllNodesWithText("Transcript $id").fetchSemanticsNodes().isNotEmpty() }
         }
@@ -102,7 +108,7 @@ class DurableArchiveInstrumentedTest {
         archive() // Source a is destroyed; another request must be accepted, not globally locked.
         awaitTranscript("c")
         assertEquals(setOf("a", "b"), queue.state.value.hidden(identity))
-        compose.onNodeWithTag("active_navigation").performTouchInput {
+        compose.onNodeWithTag("chat_transcript").performTouchInput {
             swipe(Offset(width * 0.75f, center.y), Offset(width * 0.25f, center.y), 400)
         }
         awaitTranscript("d")

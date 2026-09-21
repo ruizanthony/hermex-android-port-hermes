@@ -11,7 +11,33 @@ import com.uzairansar.hermex.ui.sessions.chainIdsFor
 class ActiveConversationContext : ViewModel() {
     private var projection by mutableStateOf<Pair<String, List<String>>?>(null)
 
+    private var generation = 0L
+    private var template = com.uzairansar.hermex.ui.sessions.SessionListUiState()
+
+    fun updateFromList(identity: String, state: com.uzairansar.hermex.ui.sessions.SessionListUiState) {
+        updateMembership(identity, state.activeProfileName ?: "default", state.sessions)
+        template = state.copy(sessions = emptyList())
+        update(identity, state.activeConversationIds)
+    }
+
+    fun beginMetadataRefresh(): Long = generation
+
+    fun suspendEligibility() { generation++; projection = null }
+
+    fun reconcileMetadata(identity: String, token: Long, metadata: com.uzairansar.hermex.data.repository.SessionRepository.NavigationMetadata): Boolean {
+        if (generation != token) return false
+        if (membershipIdentity != null && (membershipIdentity != identity || profile != metadata.profile)) {
+            clear()
+            return false
+        }
+        updateMembership(identity, metadata.profile, metadata.sessions)
+        val fresh = template.copy(sessions = metadata.sessions, activeProfileName = metadata.profile)
+        update(identity, fresh.activeConversationIds)
+        return true
+    }
+
     fun update(accountIdentity: String, ids: List<String>) {
+        generation++
         projection = accountIdentity to ids.toList()
     }
 
@@ -35,5 +61,9 @@ class ActiveConversationContext : ViewModel() {
         else rows.firstOrNull { it.sessionId == sessionId }?.let { rows.chainIdsFor(it.stableId) }
             ?.ifEmpty { listOf(sessionId) } ?: listOf(sessionId)
 
-    fun clear() { projection = null; rows = emptyList(); membershipIdentity = null }
+    fun clear() {
+        generation++
+        projection = null; rows = emptyList(); membershipIdentity = null
+        template = com.uzairansar.hermex.ui.sessions.SessionListUiState()
+    }
 }

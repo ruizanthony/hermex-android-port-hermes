@@ -1,9 +1,10 @@
 package com.uzairansar.hermex
 
 import android.app.Application
+import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.uzairansar.hermex.ui.chat.ChatRoute
@@ -16,9 +17,69 @@ import org.junit.runner.RunWith
 /** Synthetic server only; run on device separately from assembleDebugAndroidTest. */
 @RunWith(AndroidJUnit4::class)
 class ActiveConversationNavigationInstrumentedTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val server = MockWebServer()
-    @After fun close() { server.close() }
+    @After fun close() {
+        compose.runOnUiThread { compose.activity.setContent {} }
+        server.close()
+    }
+
+    @Test fun olderReadingPositionSurvivesReplacementAndSavedStateRecreation() {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val id = request.url.queryParameter("session_id") ?: "a"
+                val messages = (0 until 80).joinToString(",") {
+                    """{"role":"user","content":"Message $id $it : synthetic reading position fixture."}"""
+                }
+                return MockResponse.Builder().body(if (request.url.encodedPath == "/api/session")
+                    """{"session":{"session_id":"$id","title":"Conversation $id","messages":[$messages]}}""" else "{}").build()
+            }
+        }
+        server.start()
+        val container = AppContainer(ApplicationProvider.getApplicationContext<Application>())
+        var registry = androidx.compose.runtime.saveable.SaveableStateRegistry(null) { true }
+        var epoch by mutableIntStateOf(0)
+        compose.runOnUiThread { compose.activity.setContent {
+            key(epoch) {
+                CompositionLocalProvider(androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides registry) {
+                    var selected by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("a") }
+                    HermexTheme {
+                        ActiveChatContent("${server.url("/")}:$selected") {
+                            ChatRoute(sessionId = selected, serverId = server.url("/").toString(),
+                                repository = container.chatRepository(server.url("/")), activeConversationIds = listOf("a", "b"),
+                                onNavigateConversation = { selected = it }, onBack = {}, onOpenWorkspace = {}, onOpenGit = {})
+                        }
+                    }
+                }
+            }
+        } }
+        fun position(): Float = compose.onNodeWithTag("chat_transcript").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
+        compose.waitUntil(20_000) {
+            compose.onAllNodesWithTag("chat_transcript").fetchSemanticsNodes().isNotEmpty() && position() > 50f
+        }
+        repeat(3) {
+            compose.onNodeWithTag("chat_transcript").performTouchInput {
+                swipeDown(startY = height * 0.35f, endY = height * 0.70f, durationMillis = 450)
+            }
+        }
+        compose.waitForIdle()
+        val before = position()
+        compose.onNodeWithTag("active_next").performClick()
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("Conversation b").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("active_previous").performClick()
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("Conversation a").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+        org.junit.Assert.assertEquals(before, position(), 0.1f)
+        compose.runOnIdle {
+            registry = androidx.compose.runtime.saveable.SaveableStateRegistry(registry.performSave()) { true }
+            epoch++
+        }
+        compose.waitUntil(20_000) { compose.onAllNodesWithTag("chat_transcript").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitForIdle()
+        org.junit.Assert.assertEquals(before, position(), 0.1f)
+        compose.onAllNodesWithTag("chat_transcript").assertCountEquals(1)
+    }
 
     @Test fun buttonsReplaceTheOnlyChatAndRestoreItsDraft() {
         server.dispatcher = object : Dispatcher() {
@@ -33,7 +94,7 @@ class ActiveConversationNavigationInstrumentedTest {
         server.start()
         val app = ApplicationProvider.getApplicationContext<Application>()
         val container = AppContainer(app)
-        compose.setContent {
+        compose.runOnUiThread { compose.activity.setContent {
             var selected by remember { mutableStateOf("a") }
             HermexTheme {
                 ActiveChatContent("${server.url("/")}:$selected") {
@@ -48,6 +109,7 @@ class ActiveConversationNavigationInstrumentedTest {
                 }
             }
         }
+        }
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Transcript a").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("active_previous").assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextInput("Draft to preserve")
@@ -57,9 +119,10 @@ class ActiveConversationNavigationInstrumentedTest {
         compose.onAllNodesWithTag("chat_transcript").assertCountEquals(1)
         compose.onNodeWithTag("active_previous").performClick()
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Draft to preserve").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("active_navigation").performTouchInput { swipeLeft() }
+        // Start inside the content, not the Android back-gesture edge exclusion.
+        compose.onNodeWithTag("chat_transcript").performTouchInput { swipeLeft(startX = width * 0.8f, endX = width * 0.2f) }
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Transcript b").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("active_navigation").performTouchInput { swipeLeft() }
+        compose.onNodeWithTag("chat_transcript").performTouchInput { swipeLeft(startX = width * 0.8f, endX = width * 0.2f) }
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Transcript c").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("active_next").assertIsNotEnabled()
         compose.onNodeWithTag("active_navigation").performTouchInput { swipeUp() }

@@ -576,11 +576,15 @@ fun ChatRoute(
     val transcriptTopPadding =
         (topBarHeight - statusBarHeight).coerceAtLeast(0.dp) + statusStackHeight + 8.dp
     val composerHeight = with(density) { composerHeightPx.toDp() }.takeIf { it > 0.dp } ?: 160.dp
+    val navigation = remember(activeConversationIds) { ActiveConversationNavigation(activeConversationIds) }
+    val navigationEnabled = sessionId in navigation.ids && !state.isRunningSessionAction && !state.isPinning &&
+        !state.isArchived && !state.isUploadingAttachment && state.openSessionId == null && selectedTextContext == null
     val transcriptListState = rememberLazyListState()
     val isTranscriptDragged by transcriptListState.interactionSource.collectIsDraggedAsState()
-    var followsTranscriptBottom by remember(sessionId) { mutableStateOf(true) }
+    val readingState = rememberSaveable(sessionId, saver = TranscriptReadingState.Saver) { TranscriptReadingState() }
+    var followsTranscriptBottom by readingState.followState
     var transcriptScrollCooldownActive by remember(sessionId) { mutableStateOf(false) }
-    var isReadingOlderTranscript by remember(sessionId) { mutableStateOf(false) }
+    var isReadingOlderTranscript by readingState.olderState
     val nearBottomTolerancePx = with(density) {
         (if (state.isStreaming) 160.dp else 80.dp).roundToPx()
     }
@@ -942,6 +946,8 @@ fun ChatRoute(
                         .fillMaxSize()
                         .padding(top = statusBarHeight)
                         .testTag("chat_transcript")
+                        .conversationSwipe(sessionId, navigation.neighbor(sessionId, false),
+                            navigation.neighbor(sessionId, true), navigationEnabled, onNavigateConversation, navigation.ids)
                         .hermexHazeSource(key = "chat-transcript"),
                     state = transcriptListState,
                     contentPadding = PaddingValues(
@@ -1264,7 +1270,6 @@ fun ChatRoute(
                     }
                 },
             )
-            val navigation = remember(activeConversationIds) { ActiveConversationNavigation(activeConversationIds) }
             if (sessionId in navigation.ids) {
                 ActiveConversationControls(
                     previousId = navigation.neighbor(sessionId, next = false),
@@ -1273,6 +1278,7 @@ fun ChatRoute(
                     enabled = !state.isRunningSessionAction && !state.isPinning && !state.isArchived &&
                         !state.isUploadingAttachment && state.openSessionId == null,
                     onNavigate = onNavigateConversation,
+                    eligibleIds = navigation.ids,
                 )
             }
         }

@@ -48,7 +48,28 @@ class SessionRepository(
             cacheGeneration = cacheOwnership.generation(serverUrl),
         )
 
-    suspend fun loadSessions(includeArchived: Boolean = false): ResultState<SessionPage> {
+    data class NavigationMetadata(val profile: String, val sessions: List<SessionSummary>)
+    class NavigationProfileChanged : IllegalStateException("Conversation profile changed.")
+
+    /** No transcript downloads (including optional delegation proofs), no cached fallback. */
+    suspend fun loadNavigationMetadata(sessionId: String): NavigationMetadata {
+        val generation = cacheOwnership.generation(serverUrl)
+        val detail = client.sessionMetadata(sessionId).session ?: error("Conversation metadata unavailable.")
+        check(detail.sessionId == sessionId) { "Conversation identity changed." }
+        val profile = detail.profile?.takeIf(String::isNotBlank) ?: "default"
+        val active = client.profiles().active?.takeIf(String::isNotBlank) ?: "default"
+        if (active != profile) throw NavigationProfileChanged()
+        val result = loadSessions(includeArchived = false, metadataOnly = true)
+        check(result is ResultState.Data && !result.fromCache) { "Navigation metadata unavailable." }
+        if ((client.profiles().active?.takeIf(String::isNotBlank) ?: "default") != profile)
+            throw NavigationProfileChanged()
+        check(cacheOwnership.generation(serverUrl) == generation) { "Metadata changed during refresh." }
+        return NavigationMetadata(profile, result.value.sessions.filter {
+            (it.profile?.takeIf(String::isNotBlank) ?: "default") == profile
+        })
+    }
+
+    suspend fun loadSessions(includeArchived: Boolean = false, metadataOnly: Boolean = false): ResultState<SessionPage> {
         val cacheGeneration = cacheOwnership.generation(serverUrl)
         val now = System.currentTimeMillis()
         return try {
@@ -72,7 +93,7 @@ class SessionRepository(
             }
             val compressionLinked = sparseLineage.enrich(directlyLinked,
                 { client.sessionMetadata(it).session }, { client.compressionLineageReport(it) })
-            val allSessions = delegations.enrich(compressionLinked) {
+            val allSessions = delegations.enrich(compressionLinked, allowLookup = !metadataOnly) {
                 client.session(it, includeMessages = true, limit = 2_000).session
             }
             val sessions = allSessions.filter { includeArchived || it.archived != true }

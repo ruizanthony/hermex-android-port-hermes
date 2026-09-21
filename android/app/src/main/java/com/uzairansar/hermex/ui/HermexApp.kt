@@ -347,8 +347,7 @@ fun HermexApp(
                             shortcutProfile = entry.arguments?.getString("shortcutProfile"),
                             initialArchived = entry.arguments?.getBoolean("showArchived") == true,
                             selectedSessionId = selectedSessionId.takeIf { usesRegularWidthLayout },
-                            onActiveConversationIdsChanged = { navigationContext.update(navigationIdentity, it) },
-                            onArchiveMembershipChanged = { profile, rows -> navigationContext.updateMembership(navigationIdentity, profile, rows) },
+                            onNavigationProjectionChanged = { navigationContext.updateFromList(navigationIdentity, it) },
                             onOpenChat = { sessionId ->
                                 if (usesRegularWidthLayout) selectSession(sessionId, false, false)
                                 else navController.navigateSingleTop("chat/$sessionId")
@@ -388,6 +387,8 @@ fun HermexApp(
                             },
                             detail = {
                                 if (server != null && detailSessionId != null) {
+                                    com.uzairansar.hermex.ui.chat.ActiveConversationRefresh(navigationContext, navigationIdentity,
+                                        detailSessionId, server, activeAccount?.id.orEmpty(), container)
                                     ActiveChatContent("$activeServerKey:$detailSessionId") {
                                         ChatRoute(
                                             sessionId = detailSessionId,
@@ -447,6 +448,8 @@ fun HermexApp(
                         var detailSessionId by rememberSaveable(activeServerKey, initialSessionId) {
                             mutableStateOf(initialSessionId)
                         }
+                        com.uzairansar.hermex.ui.chat.ActiveConversationRefresh(navigationContext, navigationIdentity,
+                            detailSessionId, server, activeAccount?.id.orEmpty(), container)
                         ActiveChatContent("$activeServerKey:$detailSessionId") {
                             ChatRoute(
                                 sessionId = detailSessionId,

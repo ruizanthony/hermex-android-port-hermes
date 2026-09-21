@@ -41,6 +41,8 @@ class DurableArchiveTest {
             assertFalse(queue.enqueue(identity, "a"))
             withTimeout(5000) { backend.entered.await() }
             assertEquals("a", journal.rows.single().sessionId)
+            assertEquals(listOf("a"), journal.rows.single().attemptedMembers)
+            assertEquals(1, journal.rows.single().attemptTrackingVersion)
             assertTrue(queue.enqueue(identity, "b"))
             assertEquals(setOf("a", "b"), queue.state.value.hidden(identity))
             assertEquals(listOf("a"), backend.calls.toList())
@@ -125,6 +127,95 @@ class DurableArchiveTest {
             assertEquals(setOf("root"), failed.hidden(identity))
         } finally { scope.cancel() }
     }
+    @Test fun freshRefreshCanReleaseRestoredTombstoneButStaleRefreshCannot() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val backend = Backend().apply { release.complete(Unit) }
+        val queue = DurableArchiveCoordinator(Journal(), backend, scope) { true }
+        try {
+            val stale = queue.beginRefresh(identity)
+            queue.enqueue(identity, "a")
+            withTimeout(5000) { queue.state.first { it.requests.isEmpty() && "a" in it.hidden(identity) } }
+            val restored = listOf(SessionSummary(sessionId = "a", profile = "default", archived = false))
+            assertEquals(false, queue.reconcileRefresh(stale, restored))
+            assertEquals(setOf("a"), queue.state.value.hidden(identity))
+            val fresh = queue.beginRefresh(identity)
+            assertEquals(true, queue.reconcileRefresh(fresh, restored))
+            assertTrue(queue.state.value.hidden(identity).isEmpty())
+            assertEquals(false, queue.reconcileRefresh(stale, restored))
+        } finally { scope.cancel() }
+    }
+
+    @Test fun recoveredAcknowledgementNeverRearchivesAnExternallyRestoredMember() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val journal = Journal().apply { rows = listOf(ArchiveRequest(identity, "a", confirmedMembers = listOf("a"))) }
+        val backend = Backend().apply { release.complete(Unit) }
+        val queue = DurableArchiveCoordinator(journal, backend, scope) { true }
+        try {
+            withTimeout(5000) { queue.state.first { it.requests.any { row -> row.error != null } } }
+            assertTrue("Restoration is not permission to archive again", backend.calls.isEmpty())
+            assertTrue(queue.state.value.hidden(identity).isEmpty())
+            assertNotNull(queue.state.value.requests.single().error)
+        } finally { scope.cancel() }
+    }
+
+    @Test fun recoveredUncertainPostRequiresManualRetryButUnsentRequestCanResume() = runBlocking {
+        for (attempted in listOf(emptyList<String>(), listOf("a"))) {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val journal = Journal().apply { rows = listOf(ArchiveRequest(identity, "a", attemptedMembers = attempted, attemptTrackingVersion = 1)) }
+            val backend = Backend().apply { release.complete(Unit) }
+            val queue = DurableArchiveCoordinator(journal, backend, scope) { true }
+            try {
+                withTimeout(5000) { while (journal.rows.isNotEmpty() && journal.rows.none { it.error != null }) delay(5) }
+                assertEquals(if (attempted.isEmpty()) listOf("a") else emptyList<String>(), backend.calls.toList())
+            } finally { scope.cancel() }
+        }
+    }
+
+    @Test fun refreshCannotReleasePendingUnknownOrForeignProfileRowsAndRejectsOutOfOrderRead() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val backend = Backend()
+        val queue = DurableArchiveCoordinator(Journal(), backend, scope) { true }
+        try {
+            queue.enqueue(identity, "a")
+            withTimeout(5000) { backend.entered.await() }
+            assertTrue(queue.reconcileRefresh(queue.beginRefresh(identity), listOf(SessionSummary(sessionId = "a", archived = false))))
+            assertEquals(setOf("a"), queue.state.value.hidden(identity))
+            backend.release.complete(Unit)
+            withTimeout(5000) { queue.state.first { it.requests.isEmpty() } }
+            val older = queue.beginRefresh(identity)
+            val newer = queue.beginRefresh(identity)
+            assertTrue(queue.reconcileRefresh(newer, listOf(SessionSummary(sessionId = "a", archived = null),
+                SessionSummary(sessionId = "a", profile = "foreign", archived = false))))
+            assertEquals(setOf("a"), queue.state.value.hidden(identity))
+            assertFalse(queue.reconcileRefresh(older, listOf(SessionSummary(sessionId = "a", archived = false))))
+            assertEquals(setOf("a"), queue.state.value.hidden(identity))
+        } finally { scope.cancel() }
+    }
+
+    @Test fun legacyJournalWithoutSendTrackingCannotProveThatAnActiveRowWasNeverSent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val journal = Journal().apply { rows = listOf(ArchiveRequest(identity, "a")) }
+        val backend = Backend().apply { release.complete(Unit) }
+        val queue = DurableArchiveCoordinator(journal, backend, scope) { true }
+        try {
+            withTimeout(5000) { while (journal.rows.isNotEmpty() && journal.rows.none { it.error != null }) delay(5) }
+            assertTrue("Legacy journal cannot exclude a lost response followed by restoration", backend.calls.isEmpty())
+        } finally { scope.cancel() }
+    }
+
+    @Test fun freshRestorationOfFailedPartialArchiveIsAlsoRemovedFromDurableAcknowledgements() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val journal = Journal().apply { rows = listOf(ArchiveRequest(identity, "a", error = "Partial failure", confirmedMembers = listOf("a"))) }
+        val queue = DurableArchiveCoordinator(journal, Backend(), scope) { true }
+        try {
+            withTimeout(5000) { queue.state.first { "a" in it.hidden(identity) } }
+            assertTrue(queue.reconcileRefresh(queue.beginRefresh(identity), listOf(SessionSummary(sessionId = "a", archived = false))))
+            assertTrue(queue.state.value.hidden(identity).isEmpty())
+            withTimeout(1000) { while (journal.rows.single().confirmedMembers.isNotEmpty()) delay(5) }
+            assertNotNull(journal.rows.single().error)
+        } finally { scope.cancel() }
+    }
+
     @Test fun diskFailureNeverSendsMutationAndRestoresTheRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val backend = Backend()

@@ -368,12 +368,20 @@ class SessionListViewModel(
                     }
             }
             val projects = async { runSuspendCatching { repository.loadProjects() } }
+            val archiveToken = archiveCoordinator?.beginRefresh(
+                com.uzairansar.hermex.data.repository.ArchiveIdentity(serverId, archiveAccount, snapshot.activeProfileName ?: "default"))
             val result = repository.loadSessions(includeArchived = requestedArchivedMode)
             // Cadence outcome: fromCache=true is reachable ONLY through the network-failure
             // fallback (cache-eligible errors with a warm cache), so it counts as a failure
             // for the auto-refresh backoff even though displayed content stays intact.
             if (result is ResultState.Data && !result.fromCache) autoRefreshBackoff.onSuccess() else autoRefreshBackoff.onFailure()
             if (generation != refreshGeneration || _state.value.showArchived != requestedArchivedMode) return@launch
+            if (archiveToken != null && result is ResultState.Data && !result.fromCache &&
+                ((_state.value.activeProfileName ?: "default") != archiveToken.identity.profile ||
+                    !archiveCoordinator.reconcileRefresh(archiveToken, result.value.sessions))) {
+                _state.update { it.copy(isLoading = false) }
+                return@launch
+            }
             when (result) {
                 is ResultState.Data -> {
                     if (result.fromCache) remoteSearchJob?.cancel()

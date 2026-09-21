@@ -15,12 +15,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 fun ActiveChatContent(identity: String, content: @Composable () -> Unit) {
     val owner: ActiveChatOwner = viewModel(key = "active-chat-owner")
     val savedStates = rememberSaveableStateHolder()
-    val store = remember(owner, identity) { owner.select(identity) }
+    val lease = remember(owner, identity) { owner.acquire(identity) }
+    val store = lease.store
     val slotOwner = remember(store) {
         object : ViewModelStoreOwner { override val viewModelStore = store }
     }
-    DisposableEffect(owner, identity) {
-        onDispose { owner.release(identity) }
+    DisposableEffect(owner, lease) {
+        onDispose { owner.release(lease) }
     }
     key(identity) {
         savedStates.SaveableStateProvider(identity) {

@@ -157,6 +157,7 @@ fun SessionListRoute(
     initialArchived: Boolean = false,
     selectedSessionId: String? = null,
     onActiveConversationIdsChanged: (List<String>) -> Unit = {},
+    onNavigationProjectionChanged: (SessionListUiState) -> Unit = {},
     onArchiveMembershipChanged: (String, List<SessionSummary>) -> Unit = { _, _ -> },
     onOpenChat: (String) -> Unit,
     onOpenVoiceChat: (String) -> Unit,
@@ -203,7 +204,8 @@ fun SessionListRoute(
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     val activeIds = state.activeConversationIds
-    LaunchedEffect(activeIds, state.activeProfileName, state.sessions) {
+    LaunchedEffect(state) {
+        onNavigationProjectionChanged(state)
         onArchiveMembershipChanged(state.activeProfileName ?: "default", state.sessions)
         onActiveConversationIdsChanged(activeIds)
     }

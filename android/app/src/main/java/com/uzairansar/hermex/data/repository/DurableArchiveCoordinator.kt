@@ -20,6 +20,8 @@ data class ArchiveRequest(
     val members: List<String> = listOf(sessionId),
     val error: String? = null,
     val confirmedMembers: List<String> = emptyList(),
+    val attemptedMembers: List<String> = emptyList(),
+    val attemptTrackingVersion: Int = 0,
 ) {
     val key: String get() = "${identity.server}\u0000${identity.account}\u0000${identity.profile}\u0000$sessionId"
 }
@@ -114,7 +116,7 @@ class DurableArchiveCoordinator(
         if (sessionId.isBlank() || !isAuthorized(identity)) return false
         synchronized(lock) {
             if (sessionId in _state.value.hidden(identity)) return false
-            val request = ArchiveRequest(identity, sessionId, (knownMembers + sessionId).distinct())
+            val request = ArchiveRequest(identity, sessionId, (knownMembers + sessionId).distinct(), attemptTrackingVersion = 1)
             records[request.key] = request
             publish()
         }
@@ -128,13 +130,47 @@ class DurableArchiveCoordinator(
         synchronized(lock) {
             val old = records[key] ?: return
             if (!isAuthorized(old.identity)) return
-            records[key] = old.copy(error = null)
+            records[key] = old.copy(error = null, attemptedMembers = emptyList(), attemptTrackingVersion = 1)
             publish()
         }
         persistAcceptance(key)
     }
 
-    /** Only explicit unarchive may remove a confirmed anti-stale tombstone. */
+    data class RefreshToken(val identity: ArchiveIdentity, val revision: Long, val serial: Long)
+    private var refreshSerial = 0L
+    private val appliedRefresh = mutableMapOf<ArchiveIdentity, Long>()
+
+    fun beginRefresh(identity: ArchiveIdentity): RefreshToken = synchronized(lock) {
+        RefreshToken(identity, _state.value.revision, ++refreshSerial)
+    }
+
+    /** Only a successful network read started after the last mutation can release a tombstone.
+     * Missing rows/unknown archive flags are not restoration evidence. Reject the entire stale
+     * read so a late list response cannot undo a newer restoration or archive projection. */
+    fun reconcileRefresh(token: RefreshToken, rows: List<SessionSummary>): Boolean = synchronized(lock) {
+        if (!isAuthorized(token.identity) || token.revision != _state.value.revision ||
+            token.serial <= (appliedRefresh[token.identity] ?: -1L)) return false
+        appliedRefresh[token.identity] = token.serial
+        val pending = records.values.filter { it.identity == token.identity && it.error == null }
+            .flatMap { it.members }.toSet()
+        val restored = rows.filter { it.archived == false &&
+            (it.profile?.takeIf(String::isNotBlank) ?: "default") == token.identity.profile &&
+            it.sessionId !in pending }.mapNotNull { it.sessionId }.toSet()
+        val old = confirmed[token.identity].orEmpty()
+        if ((old - restored) != old) {
+            confirmed[token.identity] = old - restored
+            val changed = records.values.filter { it.identity == token.identity && it.error != null &&
+                it.confirmedMembers.any { id -> id in restored } }
+            changed.forEach { records[it.key] = it.copy(confirmedMembers = it.confirmedMembers - restored) }
+            publish()
+            // Preserve the visible failure, but do not resurrect this acknowledgement on restart.
+            // This IO path persists the new journal independently of any held archive POST.
+            changed.firstOrNull()?.let { persistAcceptance(it.key) }
+        }
+        true
+    }
+
+    /** Explicit local restoration also invalidates in-flight refresh tokens. */
     fun restored(identity: ArchiveIdentity, ids: List<String>) = synchronized(lock) {
         confirmed[identity] = confirmed[identity].orEmpty() - ids.toSet()
         publish()
@@ -188,6 +224,17 @@ class DurableArchiveCoordinator(
                 "Conversation profile changed. Refresh and retry."
             }
             require(members.none { it.isSessionReadOnly }) { "This session is read-only." }
+            // An acknowledgement or a durable send-intent is not permission to replay a
+            // later active row: another client may have restored it after a lost response.
+            require(members.none { it.sessionId in request.confirmedMembers && it.archived != true }) {
+                "A previously archived member was restored. Review the conversation before archiving again."
+            }
+            require(request.attemptTrackingVersion >= 1 || members.all { it.archived == true }) {
+                "Older archive request has an unknown send status. Review and retry explicitly."
+            }
+            require(members.none { it.sessionId in request.attemptedMembers && it.archived != true }) {
+                "Archive response was interrupted. Review the conversation and retry explicitly."
+            }
             request = request.copy(members = ids)
             synchronized(lock) { records[request.key] = request; publish() }
             persist() // Proven membership survives a partial mutation/process death.
@@ -195,6 +242,10 @@ class DurableArchiveCoordinator(
                 checkAuthority(request.identity)
                 // Never replay a confirmed archive after an interrupted response.
                 if (members.firstOrNull { it.sessionId == id }?.archived != true) {
+                    request = request.copy(attemptedMembers = (request.attemptedMembers + id).distinct())
+                    synchronized(lock) { records[request.key] = request; publish() }
+                    persist() // A lost POST response must never become an automatic blind replay.
+                    checkAuthority(request.identity)
                     backend.archive(request.identity, id)?.let { error(it) }
                 }
                 request = request.copy(confirmedMembers = (request.confirmedMembers + id).distinct())

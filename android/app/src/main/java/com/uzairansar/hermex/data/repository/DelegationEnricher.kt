@@ -25,12 +25,12 @@ internal class DelegationEnricher(private val now: () -> Long = System::currentT
         }
     }
 
-    suspend fun enrich(rows: List<SessionSummary>, fetch: suspend (String) -> SessionDetail?): List<SessionSummary> = mutex.withLock {
+    suspend fun enrich(rows: List<SessionSummary>, allowLookup: Boolean = true, fetch: suspend (String) -> SessionDetail?): List<SessionSummary> = mutex.withLock {
         val parents = mutableMapOf<String, SessionDetail?>()
         withTimeoutOrNull(6_000) {
             var checked = 0
             for (row in rows) {
-                if (!eligible(row)) continue
+                if (!allowLookup || !eligible(row)) continue
                 val key = key(row)
                 if (verdicts[key]?.expires?.let { it > now() } == true) continue
                 if (checked++ >= 8) break

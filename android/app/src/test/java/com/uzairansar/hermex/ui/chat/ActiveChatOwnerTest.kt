@@ -23,6 +23,17 @@ class ActiveChatOwnerTest {
         assertTrue(probe.cleared)
     }
 
+    @Test fun recreatedCompositionOfSameIdentityMustNotBeClearedByItsPredecessor() {
+        val owner = ActiveChatOwner()
+        val old = owner.acquire("a")
+        val current = owner.acquire("a")
+        val probe = Probe().also { current.store.put("chat", it) }
+        owner.release(old) // Old composition disposing after its replacement has acquired the slot.
+        assertFalse("Identity alone is insufficient for overlapping recreation", probe.cleared)
+        owner.release(current)
+        assertTrue(probe.cleared)
+    }
+
     @Test fun replacingSelectionClearsOldViewModelsAndReusesCurrentSelection() {
         val owner = ActiveChatOwner()
         val first = owner.select("server:a")
