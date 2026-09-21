@@ -157,13 +157,18 @@ class DurableArchiveCoordinator(
             (it.profile?.takeIf(String::isNotBlank) ?: "default") == token.identity.profile &&
             it.sessionId !in pending }.mapNotNull { it.sessionId }.toSet()
         val old = confirmed[token.identity].orEmpty()
-        if ((old - restored) != old) {
-            confirmed[token.identity] = old - restored
-            val changed = records.values.filter { it.identity == token.identity && it.error != null &&
-                it.confirmedMembers.any { id -> id in restored } }
-            changed.forEach { records[it.key] = it.copy(confirmedMembers = it.confirmedMembers - restored) }
+        val failed = records.values.filter { it.identity == token.identity && it.error != null }
+        val failedMembers = failed.flatMap { it.members }.toSet()
+        val newlyConfirmed = rows.filter { it.archived == true && it.sessionId in failedMembers &&
+            (it.profile?.takeIf(String::isNotBlank) ?: "default") == token.identity.profile
+        }.mapNotNull { it.sessionId }.toSet()
+        val next = (old - restored) + newlyConfirmed
+        val changed = failed.filter { it.confirmedMembers.toSet() != it.members.filter { id -> id in next }.toSet() }
+        if (next != old || changed.isNotEmpty()) {
+            confirmed[token.identity] = next
+            changed.forEach { records[it.key] = it.copy(confirmedMembers = it.members.filter { id -> id in next }) }
             publish()
-            // Preserve the visible failure, but do not resurrect this acknowledgement on restart.
+            // Preserve the error while persisting both late acknowledgements and restorations.
             // This IO path persists the new journal independently of any held archive POST.
             changed.firstOrNull()?.let { persistAcceptance(it.key) }
         }

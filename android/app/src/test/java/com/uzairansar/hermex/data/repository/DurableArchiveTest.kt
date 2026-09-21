@@ -216,6 +216,34 @@ class DurableArchiveTest {
         } finally { scope.cancel() }
     }
 
+    @Test fun freshArchiveEvidenceAfterLostResponseSurvivesProjectionAndJournalRecovery() = runBlocking {
+        val journal = Journal().apply { rows = listOf(ArchiveRequest(identity, "a", error = "Lost response")) }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val backend = Backend()
+        val queue = DurableArchiveCoordinator(journal, backend, scope) { true }
+        val truth = listOf(SessionSummary(sessionId = "a", profile = "default", archived = true))
+        try {
+            withTimeout(5000) { queue.state.first { it.requests.isNotEmpty() } }
+            val older = queue.beginRefresh(identity)
+            assertTrue(queue.reconcileRefresh(queue.beginRefresh(identity), truth))
+            fun assertVisible(projection: ArchiveProjection) {
+                val state = com.uzairansar.hermex.ui.sessions.SessionListUiState(
+                    sessions = projection.project(identity, truth, true), showArchived = true)
+                assertEquals(listOf("a"), state.visibleSessions.map { it.sessionId })
+                assertNotNull(projection.requests.single().error)
+            }
+            assertVisible(queue.state.value)
+            assertFalse(queue.reconcileRefresh(older, truth.map { it.copy(archived = false) }))
+            withTimeout(1000) { while (journal.rows.single().confirmedMembers != listOf("a")) delay(5) }
+            val recoveredScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            try {
+                val recovered = DurableArchiveCoordinator(journal, backend, recoveredScope) { true }
+                assertVisible(withTimeout(5000) { recovered.state.first { it.requests.isNotEmpty() } })
+                assertTrue(backend.calls.isEmpty())
+            } finally { recoveredScope.cancel() }
+        } finally { scope.cancel() }
+    }
+
     @Test fun diskFailureNeverSendsMutationAndRestoresTheRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val backend = Backend()
