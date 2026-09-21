@@ -3976,7 +3976,8 @@ private fun MessageRow(
     val visibleText = message.visibleDisplayText(hidesAttachmentPaths)
     val attachments = message.displayAttachments
     val linkPreviewUrl = remember(message.content, message.role, isStreamingMessage) {
-        TranscriptLinkPreviewEligibility.previewUrlFor(message, isStreamingMessage)
+        if (visibleText.length > TRANSCRIPT_INLINE_CHARACTERS) null
+        else TranscriptLinkPreviewEligibility.previewUrlFor(message, isStreamingMessage)
     }
     var previewAttachment by remember { mutableStateOf<MessageAttachment?>(null) }
     var previewTranscriptMedia by remember { mutableStateOf<TranscriptMediaReference?>(null) }
@@ -4188,17 +4189,18 @@ private fun SelectableMessageTextSheet(
         onDismiss = onDismiss,
         heightFraction = 0.86f,
     ) {
-        val scrollState = rememberScrollState()
-        SelectionContainer {
-            Text(
-                text = text.ifBlank { " " },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(18.dp),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-            )
+        if (text.length > TRANSCRIPT_INLINE_CHARACTERS) {
+            BoundedTranscriptReader(text = text, modifier = Modifier.fillMaxWidth().padding(18.dp))
+        } else {
+            val scrollState = rememberScrollState()
+            SelectionContainer {
+                Text(
+                    text = text.ifBlank { " " },
+                    modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(18.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
         }
     }
 }
@@ -4299,7 +4301,10 @@ private fun AssistantMessageRow(
 ) {
     val hasHiddenCards = !showThinkingAndToolCards && (reasoningTexts.isNotEmpty() || tools.isNotEmpty())
     if (visibleText.isBlank() && attachments.isEmpty() && linkPreviewUrl == null && hasHiddenCards) return
-    val transcriptMediaSegments = remember(visibleText) { TranscriptMediaParser.segments(visibleText) }
+    val transcriptMediaSegments = remember(visibleText) {
+        if (visibleText.length > TRANSCRIPT_INLINE_CHARACTERS) emptyList()
+        else TranscriptMediaParser.segments(visibleText)
+    }
     val containsTranscriptMedia = transcriptMediaSegments.any { it is TranscriptMediaSegment.Media }
 
     Column(
@@ -5250,13 +5255,11 @@ private fun MarkerMessageCard(
             )
         }
         ChatDisclosureVisibility(expanded) {
-            SelectionContainer {
-                Text(
-                    cardBody.ifBlank { kind.title },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            BoundedTranscriptText(
+                text = cardBody.ifBlank { kind.title },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
@@ -5283,6 +5286,7 @@ private fun ReasoningAccessoryCard(
     val view = LocalView.current
     val hapticsEnabled = LocalHermexHapticsEnabled.current
     val summary = trimmed
+        .take(160)
         .replace('\n', ' ')
         .trim()
         .let { if (it.length <= 80) it else "${it.take(80)}..." }
@@ -5338,13 +5342,11 @@ private fun ReasoningAccessoryCard(
             )
         }
         ChatDisclosureVisibility(expanded) {
-            SelectionContainer {
-                Text(
-                    trimmed,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            BoundedTranscriptText(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
@@ -5400,7 +5402,7 @@ private fun LiveToolActivityCard(
                 maxLines = 1,
             )
             Text(
-                trimmed,
+                trimmed.take(80),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary,
@@ -5753,7 +5755,7 @@ private fun ToolActivityCard(
     val expanded = userToggledExpansion ?: startsExpanded
     val hasFailure = tools.any { it.isError == true }
     val accentColor = if (hasFailure) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
-    val summary = tools.joinToString(", ") { it.displayName }.ifBlank { "Tool activity" }
+    val summary = tools.take(3).joinToString(", ") { it.displayName.take(80) }.ifBlank { "Tool activity" }
     val motion = LocalHermexMotionScheme.current
     val motionPolicy = LocalHermexMotionPolicy.current
     val view = LocalView.current
@@ -5795,7 +5797,7 @@ private fun ToolActivityCard(
                 maxLines = 1,
             )
             Text(
-                text = summary,
+                text = summary.take(80),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary,
@@ -5864,14 +5866,22 @@ private fun ToolCallCard(
                 color = accentColor,
                 fontWeight = FontWeight.SemiBold,
             )
-            Text(
-                text = tool.displayName,
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (tool.displayName.length > TRANSCRIPT_INLINE_CHARACTERS) {
+                BoundedTranscriptText(
+                    text = tool.displayName,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            } else {
+                Text(
+                    text = tool.displayName,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             tool.collapsedStatusText?.let { status ->
                 TranscriptStatusPill(text = status, color = accentColor)
             }
@@ -5935,13 +5945,11 @@ private fun ToolDetailSection(
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.secondary,
         )
-        SelectionContainer {
-            Text(
-                value,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+        BoundedTranscriptText(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -5998,7 +6006,7 @@ private fun markerCardBody(kind: ChatMarkerKind, content: String?): String {
 }
 
 private fun markerSummary(kind: ChatMarkerKind, body: String): String {
-    val oneLine = body.replace('\n', ' ').trim()
+    val oneLine = body.take(160).replace('\n', ' ').trim()
     if (kind == ChatMarkerKind.CompressionReference) {
         return if (oneLine.isBlank()) {
             "Reference only"
@@ -6039,13 +6047,11 @@ private fun UserMessageBubble(
             .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), bubbleShape)
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
-        SelectionContainer {
-            Text(
-                text,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
+        BoundedTranscriptText(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -6599,6 +6605,9 @@ private fun AttachmentTextPreview(
             }
         }
         error != null -> AttachmentPreviewUnavailable(error, path ?: "Unavailable")
+        content != null && content.length > TRANSCRIPT_INLINE_CHARACTERS -> {
+            BoundedTranscriptReader(text = content)
+        }
         content != null -> {
             val verticalState = rememberScrollState()
             val horizontalState = rememberScrollState()

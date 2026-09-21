@@ -89,7 +89,13 @@ fun MarkdownText(
     wrapsCodeBlockLines: Boolean = true,
     isStreaming: Boolean = false,
     streamedTextAnimationEnabled: Boolean = false,
+    contentKey: Any = Unit,
 ) {
+    // Before any splitter, Markdown/regex parser, AndroidView or semantics projection.
+    if (markdown.length > TRANSCRIPT_INLINE_CHARACTERS) {
+        BoundedTranscriptText(text = markdown, modifier = modifier, contentKey = contentKey)
+        return
+    }
     val motion = LocalHermexMotionScheme.current
     val motionPolicy = LocalHermexMotionPolicy.current
     var usesStreamingRenderer by remember { mutableStateOf(isStreaming) }
@@ -131,19 +137,8 @@ private fun StructuredMarkdownText(
     isStreaming: Boolean,
     streamedTextAnimationEnabled: Boolean,
 ) {
-    val plainTextChunks = remember(markdown) { markdownPlainTextChunksForLargeContent(markdown) }
-    if (plainTextChunks != null) {
-        SelectionContainer {
-            Column(modifier = modifier) {
-                plainTextChunks.forEach { chunk ->
-                    Text(
-                        text = chunk,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
-        }
+    if (markdown.length > TRANSCRIPT_INLINE_CHARACTERS) {
+        BoundedTranscriptText(text = markdown, modifier = modifier)
         return
     }
     var parsedSegments by remember { mutableStateOf<List<MarkdownSegment>?>(null) }
@@ -230,8 +225,8 @@ private fun StreamingStructuredMarkdown(
 }
 
 private const val STREAM_RENDER_INTERVAL_MILLIS = 100L
-private const val MAX_STRUCTURED_MARKDOWN_CHARACTERS = 80_000
-private const val PLAIN_TEXT_CHUNK_CHARACTERS = 16_000
+private const val MAX_STRUCTURED_MARKDOWN_CHARACTERS = TRANSCRIPT_INLINE_CHARACTERS
+private const val PLAIN_TEXT_CHUNK_CHARACTERS = TRANSCRIPT_CHUNK_CHARACTERS
 
 internal fun markdownPlainTextChunksForLargeContent(markdown: String): List<String>? =
     if (markdown.length > MAX_STRUCTURED_MARKDOWN_CHARACTERS) {
@@ -246,11 +241,7 @@ internal fun markdownPlainTextChunks(markdown: String, maximumCharacters: Int): 
     val ranges = ArrayList<IntRange>((markdown.length / chunkSize) + 1)
     var start = 0
     while (start < markdown.length) {
-        var end = (start + chunkSize).coerceAtMost(markdown.length)
-        if (end < markdown.length && markdown[end - 1].isHighSurrogate() && markdown[end].isLowSurrogate()) {
-            end -= 1
-        }
-        if (end == start) end = (start + 2).coerceAtMost(markdown.length)
+        val end = transcriptChunkEnd(markdown, start, chunkSize)
         ranges += start until end
         start = end
     }
@@ -655,7 +646,7 @@ private fun CodeText(
     content: String,
     modifier: Modifier = Modifier,
 ) {
-    Text(
+    BoundedTranscriptText(
         text = content.ifEmpty { " " },
         modifier = modifier,
         style = MaterialTheme.typography.bodySmall.copy(

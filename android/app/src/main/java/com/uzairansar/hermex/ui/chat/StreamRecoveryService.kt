@@ -1,5 +1,6 @@
 package com.uzairansar.hermex.ui.chat
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -8,12 +9,14 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.content.ContextCompat
 import com.uzairansar.hermex.AppVisibilityTracker
+import com.uzairansar.hermex.BuildConfig
 import com.uzairansar.hermex.HermexApplication
 import com.uzairansar.hermex.core.model.SessionStatusResponse
 import com.uzairansar.hermex.core.network.HermesApiClient
 import com.uzairansar.hermex.core.network.HermesJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -27,18 +30,33 @@ import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.util.concurrent.ConcurrentHashMap
 
 class StreamRecoveryService : Service() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Serialize lifecycle callbacks, monitor completion and cancellation on the main dispatcher.
+    // HermesApiClient suspends network calls and reads response bodies on IO.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val jobs = ConcurrentHashMap<String, Job>()
+    private var stopping = false
+    private val foregroundGuard = StreamForegroundGuard(
+        isDenial = { error ->
+            error is SecurityException ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && error is ForegroundServiceStartNotAllowedException)
+        },
+        onDenied = ::suspendRecovery,
+    )
     private lateinit var store: StreamRecoveryStore
     private lateinit var notifier: StreamStatusNotifier
+    private var foregroundTestHooks: StreamForegroundTestHooks? = null
 
     override fun onCreate() {
         super.onCreate()
         store = StreamRecoveryStore(this)
         notifier = StreamStatusNotifier(applicationContext)
+        // Snapshot per instance; release builds cannot activate this instrumentation seam.
+        foregroundTestHooks = if (BuildConfig.DEBUG) testHooks else null
+        foregroundTestHooks?.onCreated?.invoke(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (stopping) return START_NOT_STICKY
         when (intent?.action) {
             ACTION_CLEAR_SERVER -> {
                 intent.serverId()?.let { serverId ->
@@ -78,26 +96,30 @@ class StreamRecoveryService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        ensureForeground(records.first())
+        if (!ensureForeground(records.first())) return START_NOT_STICKY
         records.forEach(::launchMonitor)
         // Records are durable and age out after five hours, so a killed monitor can safely resume.
-        return START_STICKY
+        return if (stopping) START_NOT_STICKY else START_STICKY
     }
 
     override fun onDestroy() {
+        stopping = true
         scope.cancel()
+        jobs.clear()
         super.onDestroy()
     }
 
     override fun onTimeout(startId: Int, fgsType: Int) {
-        abandonAllRecovery()
+        suspendRecovery()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun launchMonitor(record: StreamRecoveryRecord) {
+        if (stopping) return
         jobs.computeIfAbsent(record.key) {
-            scope.launch {
+            // Register before executing: an immediate completion must remove its own job.
+            scope.launch(start = CoroutineStart.LAZY) {
                 val ownerJob = currentCoroutineContext()[Job]!!
                 var consecutiveFailures = 0
                 var client: HermesApiClient? = null
@@ -120,7 +142,7 @@ class StreamRecoveryService : Service() {
                             activeClient.chatStreamStatus(record.streamId).also { consecutiveFailures = 0 }
                         } catch (error: CancellationException) {
                             throw error
-                        } catch (_: Throwable) {
+                        } catch (_: Exception) {
                             consecutiveFailures += 1
                             client = null
                             delay(streamRecoveryRetryDelayMillis(consecutiveFailures))
@@ -137,10 +159,11 @@ class StreamRecoveryService : Service() {
                     stopIfNoActiveJobs()
                 }
             }
-        }
+        }.start()
     }
 
     private suspend fun finish(record: StreamRecoveryRecord, completedNormally: Boolean) {
+        if (stopping) return
         if (!store.removeIfCurrent(record)) return
         notifier.clear(record.serverId, record.sessionId)
         if (completedNormally) {
@@ -160,6 +183,7 @@ class StreamRecoveryService : Service() {
     }
 
     private fun stopIfNoActiveJobs() {
+        if (stopping) return
         val records = store.records()
         if (!streamRecoveryShouldStop(jobs.size, records.size)) {
             records.firstOrNull()?.let(::ensureForeground)
@@ -169,33 +193,37 @@ class StreamRecoveryService : Service() {
         stopSelf()
     }
 
-    private fun abandonAllRecovery() {
-        val records = store.records()
-        jobs.values.forEach { it.cancel() }
+    private fun suspendRecovery() {
+        if (stopping) return
+        // Latch before cancellation: monitor finally blocks must not promote again.
+        stopping = true
+        scope.cancel()
         jobs.clear()
-        records.forEach { record ->
-            store.remove(record.key)
-            notifier.clear(record.serverId, record.sessionId)
-        }
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        // Durable records resume on the next permitted app start. The foreground ID
+        // is also a business notification owned by StreamStatusNotifier: do not delete it.
+        stopForeground(STOP_FOREGROUND_DETACH)
         stopSelf()
     }
 
-    private fun ensureForeground(record: StreamRecoveryRecord) {
-        val notification = notifier.ongoingNotification(
-            serverId = record.serverId,
-            sessionId = record.sessionId,
-            streamId = record.streamId,
-            recoveryLabel = "Checking background response",
-        )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                notifier.notificationId(record.serverId, record.sessionId),
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+    private fun ensureForeground(record: StreamRecoveryRecord): Boolean {
+        if (stopping) return false
+        return foregroundGuard.ensure {
+            foregroundTestHooks?.beforePromotion?.invoke()
+            val notification = notifier.ongoingNotification(
+                serverId = record.serverId,
+                sessionId = record.sessionId,
+                streamId = record.streamId,
+                recoveryLabel = "Checking background response",
             )
-        } else {
-            startForeground(notifier.notificationId(record.serverId, record.sessionId), notification)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    notifier.notificationId(record.serverId, record.sessionId),
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                )
+            } else {
+                startForeground(notifier.notificationId(record.serverId, record.sessionId), notification)
+            }
         }
     }
 
@@ -207,6 +235,9 @@ class StreamRecoveryService : Service() {
     }
 
     companion object {
+        @Volatile
+        internal var testHooks: StreamForegroundTestHooks? = null
+
         private const val ACTION_START = "com.uzairansar.hermex.action.START_STREAM_RECOVERY"
         private const val ACTION_STOP = "com.uzairansar.hermex.action.STOP_STREAM_RECOVERY"
         private const val ACTION_CLEAR_SERVER = "com.uzairansar.hermex.action.CLEAR_SERVER_STREAM_RECOVERY"

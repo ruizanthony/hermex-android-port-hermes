@@ -30,6 +30,11 @@ Changes and releases require the fork owner's approval. Work on a dedicated bran
 - The chat ⋯ menu also exposes Archive for the loaded conversation, using the same proven-chain rule and sequential mutation as the list. Re-read membership/read-only metadata before mutation, keep the draft and show errors on refusal, and navigate back only after acknowledgement. Do not implicitly stop a running generation. Deep superseded histories use iterative reachability, not recursive per-row walks.
 - Cache schema changes are additive Room migrations. Preserve existing rows and include the generated schema.
 
+## Long transcripts and recovery service
+
+- Guard every service-side foreground promotion, including null-intent restarts and cleanup callbacks. Latch refusal before cancelling jobs, return non-sticky, preserve durable recovery records, and never re-promote during cancellation/destruction. Gate failure injection to debug builds. Instrumentation must await actual service teardown instead of assuming `stopService()` synchronously destroys the service.
+- Preserve complete transcript/history and full copy/export operations. Bound long previews by both character count and line count so the full-reader button remains reachable. The full reader composes bounded chunks in a viewport-limited lazy list; keep disclosure/position by message identity across streaming appends. Preserve Unicode exactly, never save the whole transcript in instance state, and validate actual Compose interactions and Android memory/responsiveness, not only chunk unit tests.
+
 ## Work Guidance
 
 Build from `android/` with the checked-in Gradle wrapper, JDK 17 and Android SDK 36. No new application dependency is needed for compression grouping. Fixtures and public screenshots must contain only generic data.
