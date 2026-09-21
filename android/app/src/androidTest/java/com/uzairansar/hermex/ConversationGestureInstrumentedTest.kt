@@ -39,7 +39,11 @@ class ConversationGestureInstrumentedTest {
                 }, modifier = Modifier.fillMaxWidth().height(80.dp))
             }
         } }
-        compose.runOnUiThread {
+        // setContent schedules composition; runOnUiThread alone does not await AndroidView.
+        compose.waitForIdle()
+        compose.runOnIdle {
+            assertNotNull(textView)
+            assertTrue(textView!!.isAttachedToWindow)
             textView!!.requestFocus()
             android.text.Selection.setSelection(textView!!.text as android.text.Spannable, 0, 9)
             assertTrue(textView!!.hasSelection())

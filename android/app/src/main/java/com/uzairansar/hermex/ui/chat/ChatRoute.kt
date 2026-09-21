@@ -72,6 +72,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -579,7 +580,12 @@ fun ChatRoute(
     val navigation = remember(activeConversationIds) { ActiveConversationNavigation(activeConversationIds) }
     val navigationEnabled = sessionId in navigation.ids && !state.isRunningSessionAction && !state.isPinning &&
         !state.isArchived && !state.isUploadingAttachment && state.openSessionId == null && selectedTextContext == null
-    val transcriptListState = rememberLazyListState()
+    val savedTranscriptListState = rememberLazyListState()
+    // The warm cache is a bounded tail, not necessarily the saved viewport's window.
+    // Measuring it with the restored state clamps that anchor before the authoritative
+    // load completes. Keep the provisional viewport disposable, never save it.
+    val cachedTranscriptListState = remember(sessionId) { androidx.compose.foundation.lazy.LazyListState() }
+    val transcriptListState = if (state.isLoading) cachedTranscriptListState else savedTranscriptListState
     val isTranscriptDragged by transcriptListState.interactionSource.collectIsDraggedAsState()
     val readingState = rememberSaveable(sessionId, saver = TranscriptReadingState.Saver) { TranscriptReadingState() }
     var followsTranscriptBottom by readingState.followState
@@ -946,6 +952,16 @@ fun ChatRoute(
                         .fillMaxSize()
                         .padding(top = statusBarHeight)
                         .testTag("chat_transcript")
+                        .semantics {
+                            this[TranscriptLoadComplete] = !state.isLoading
+                            this[TranscriptReadingAnchor] = Triple(
+                                transcriptListState.firstVisibleItemIndex,
+                                transcriptListState.firstVisibleItemScrollOffset,
+                                transcriptListState.layoutInfo.visibleItemsInfo.firstOrNull {
+                                    it.index == transcriptListState.firstVisibleItemIndex
+                                }?.key?.toString().orEmpty(),
+                            )
+                        }
                         .conversationSwipe(sessionId, navigation.neighbor(sessionId, false),
                             navigation.neighbor(sessionId, true), navigationEnabled, onNavigateConversation, navigation.ids)
                         .hermexHazeSource(key = "chat-transcript"),

@@ -38,9 +38,9 @@ class ActiveConversationNavigationInstrumentedTest {
         server.start()
         val container = AppContainer(ApplicationProvider.getApplicationContext<Application>())
         var registry = androidx.compose.runtime.saveable.SaveableStateRegistry(null) { true }
-        var epoch by mutableIntStateOf(0)
+        var showContent by mutableStateOf(true)
         compose.runOnUiThread { compose.activity.setContent {
-            key(epoch) {
+            if (showContent) {
                 CompositionLocalProvider(androidx.compose.runtime.saveable.LocalSaveableStateRegistry provides registry) {
                     var selected by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("a") }
                     HermexTheme {
@@ -55,29 +55,57 @@ class ActiveConversationNavigationInstrumentedTest {
         } }
         fun position(): Float = compose.onNodeWithTag("chat_transcript").fetchSemanticsNode()
             .config[androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange].value()
-        compose.waitUntil(20_000) {
-            compose.onAllNodesWithTag("chat_transcript").fetchSemanticsNodes().isNotEmpty() && position() > 50f
+        fun awaitLoadedTranscript() {
+            // The title may already be visible from the provisional cache window.
+            compose.waitUntil(20_000) {
+                compose.onAllNodesWithTag("chat_transcript").fetchSemanticsNodes().singleOrNull()
+                    ?.config?.get(com.uzairansar.hermex.ui.chat.TranscriptLoadComplete) == true
+            }
+            compose.waitForIdle()
         }
+        awaitLoadedTranscript()
+        compose.waitUntil(20_000) { position() > 50f }
         repeat(3) {
             compose.onNodeWithTag("chat_transcript").performTouchInput {
                 swipeDown(startY = height * 0.35f, endY = height * 0.70f, durationMillis = 450)
             }
         }
         compose.waitForIdle()
-        val before = position()
+        fun anchor() = compose.onNodeWithTag("chat_transcript").fetchSemanticsNode()
+            .config[com.uzairansar.hermex.ui.chat.TranscriptReadingAnchor]
+        fun visibleMessages() = compose.onAllNodes(hasText("Message a", substring = true), useUnmergedTree = true)
+            .fetchSemanticsNodes().filter { it.boundsInRoot.height > 0f }
+            .map { it.config[androidx.compose.ui.semantics.SemanticsProperties.Text].toString() to it.boundsInRoot }
+        val before = anchor()
+        val estimatedBefore = position()
+        val visibleBefore = visibleMessages()
+        org.junit.Assert.assertTrue("Must read an older message, not the bottom", before.first in 1..75)
+        org.junit.Assert.assertTrue("Must have visible message evidence", visibleBefore.isNotEmpty())
+        android.util.Log.i("ReadingAnchorProof", "before anchor=$before estimated=${position()} visible=$visibleBefore")
         compose.onNodeWithTag("active_next").performClick()
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Conversation b").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("active_previous").performClick()
         compose.waitUntil(20_000) { compose.onAllNodesWithText("Conversation a").fetchSemanticsNodes().isNotEmpty() }
+        awaitLoadedTranscript()
+        android.util.Log.i("ReadingAnchorProof", "restored anchor=${anchor()} estimated=${position()} visible=${visibleMessages()}")
+        org.junit.Assert.assertEquals(before, anchor())
+        org.junit.Assert.assertEquals(estimatedBefore, position(), 0.1f)
+        org.junit.Assert.assertEquals(visibleBefore, visibleMessages())
+        // Recreate the composition at the SAME call-site key, like an Activity restart.
+        // Changing an outer key changes every rememberSaveable key and cannot restore them.
+        val saved = compose.runOnIdle { registry.performSave().also { showContent = false } }
         compose.waitForIdle()
-        org.junit.Assert.assertEquals(before, position(), 0.1f)
+        compose.onAllNodesWithTag("chat_transcript").assertCountEquals(0)
         compose.runOnIdle {
-            registry = androidx.compose.runtime.saveable.SaveableStateRegistry(registry.performSave()) { true }
-            epoch++
+            registry = androidx.compose.runtime.saveable.SaveableStateRegistry(saved) { true }
+            showContent = true
         }
-        compose.waitUntil(20_000) { compose.onAllNodesWithTag("chat_transcript").fetchSemanticsNodes().isNotEmpty() }
-        compose.waitForIdle()
-        org.junit.Assert.assertEquals(before, position(), 0.1f)
+        compose.waitUntil(20_000) { compose.onAllNodesWithText("Conversation a").fetchSemanticsNodes().isNotEmpty() }
+        awaitLoadedTranscript()
+        android.util.Log.i("ReadingAnchorProof", "restored anchor=${anchor()} estimated=${position()} visible=${visibleMessages()}")
+        org.junit.Assert.assertEquals(before, anchor())
+        org.junit.Assert.assertEquals(estimatedBefore, position(), 0.1f)
+        org.junit.Assert.assertEquals(visibleBefore, visibleMessages())
         compose.onAllNodesWithTag("chat_transcript").assertCountEquals(1)
     }
 
