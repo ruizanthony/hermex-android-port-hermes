@@ -24,6 +24,32 @@ class ConversationGestureInstrumentedTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     @After fun close() { compose.runOnUiThread { compose.activity.setContent {} } }
 
+    @Test fun nativeTextSelectionBlocksSwipingElsewhereInTheTranscript() {
+        var textView: android.widget.TextView? = null
+        val navigated = mutableListOf<String>()
+        compose.runOnUiThread { compose.activity.setContent {
+            Box(Modifier.fillMaxSize().testTag("content")
+                .conversationSwipe("a", null, "b", true, { navigated += it })) {
+                androidx.compose.ui.viewinterop.AndroidView(factory = { context ->
+                    android.widget.TextView(context).apply {
+                        text = "Synthetic selectable native Markdown text"
+                        setTextIsSelectable(true)
+                        textView = this
+                    }
+                }, modifier = Modifier.fillMaxWidth().height(80.dp))
+            }
+        } }
+        compose.runOnUiThread {
+            textView!!.requestFocus()
+            android.text.Selection.setSelection(textView!!.text as android.text.Spannable, 0, 9)
+            assertTrue(textView!!.hasSelection())
+        }
+        compose.onNodeWithTag("content").performTouchInput {
+            swipe(Offset(width * .8f, center.y), Offset(width * .2f, center.y), 300)
+        }
+        compose.runOnIdle { assertTrue(navigated.isEmpty()) }
+    }
+
     @Test fun contentGesturePreservesChildHorizontalScrollEdgesLongPressAndFrozenTarget() {
         val navigated = mutableListOf<String>()
         var next by mutableStateOf("b")

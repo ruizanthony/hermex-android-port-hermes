@@ -7,6 +7,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
@@ -42,11 +43,14 @@ internal fun Modifier.conversationSwipe(identity: String, previous: String?, nex
     val available = rememberUpdatedState(enabled)
     val navigate = rememberUpdatedState(onNavigate)
     val toolbar = LocalTextToolbar.current
-    return pointerInput(identity, toolbar) {
+    val host = LocalView.current
+    fun selectingText(): Boolean = toolbar.status == TextToolbarStatus.Shown ||
+        (host.rootView.findFocus() as? android.widget.TextView)?.hasSelection() == true
+    return pointerInput(identity, toolbar, host) {
         val edge = 24.dp.toPx()
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
-            if (!available.value || toolbar.status == TextToolbarStatus.Shown ||
+            if (!available.value || selectingText() ||
                 down.position.x < edge || down.position.x > size.width - edge) return@awaitEachGesture
             val (before, after) = neighbors.value
             val swipe = ConversationSwipe(before, after, viewConfiguration.touchSlop,
@@ -54,7 +58,7 @@ internal fun Modifier.conversationSwipe(identity: String, previous: String?, nex
             while (true) {
                 val event = awaitPointerEvent()
                 val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!available.value || toolbar.status == TextToolbarStatus.Shown) break
+                if (!available.value || selectingText()) break
                 if (swipe.update(change.position.x - down.position.x, change.position.y - down.position.y,
                         change.uptimeMillis - down.uptimeMillis, change.isConsumed, event.changes.size, change.pressed)) {
                     change.consume()
