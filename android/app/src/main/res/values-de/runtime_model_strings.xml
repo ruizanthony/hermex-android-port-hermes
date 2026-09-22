@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">Angefordert: %1$s</string>
+    <string name="runtime_model_used">Verwendet: %1$s</string>
+    <string name="runtime_model_last">Letzte Antwort: %1$s</string>
+    <string name="runtime_model_unconfirmed">Tatsächliches Modell nicht bestätigt</string>
+    <string name="runtime_model_fallback_active">Ersatzmodell aktiv</string>
+    <string name="runtime_model_fallback_used">Ersatzmodell verwendet</string>
+    <string name="runtime_model_fallback_pending">Wechsel zum Ersatzmodell läuft</string>
+</resources>

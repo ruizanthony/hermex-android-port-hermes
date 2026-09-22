@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">المطلوب: %1$s</string>
+    <string name="runtime_model_used">المستخدم: %1$s</string>
+    <string name="runtime_model_last">آخر رد: %1$s</string>
+    <string name="runtime_model_unconfirmed">لم يتم تأكيد النموذج الفعلي</string>
+    <string name="runtime_model_fallback_active">النموذج البديل نشط</string>
+    <string name="runtime_model_fallback_used">تم استخدام النموذج البديل</string>
+    <string name="runtime_model_fallback_pending">جارٍ التحويل إلى النموذج البديل</string>
+</resources>

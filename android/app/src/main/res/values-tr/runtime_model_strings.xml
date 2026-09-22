@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">İstenen: %1$s</string>
+    <string name="runtime_model_used">Kullanılan: %1$s</string>
+    <string name="runtime_model_last">Son yanıt: %1$s</string>
+    <string name="runtime_model_unconfirmed">Gerçek model doğrulanmadı</string>
+    <string name="runtime_model_fallback_active">Yedek model etkin</string>
+    <string name="runtime_model_fallback_used">Yedek model kullanıldı</string>
+    <string name="runtime_model_fallback_pending">Yedek modele geçiliyor</string>
+</resources>

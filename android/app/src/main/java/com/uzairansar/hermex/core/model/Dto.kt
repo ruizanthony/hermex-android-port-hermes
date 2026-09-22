@@ -267,6 +267,8 @@ data class SessionDetail(
     @SerialName("compression_anchor_visible_idx") val compressionAnchorVisibleIdx: Int? = null,
     @SerialName("compression_anchor_message_key") val compressionAnchorMessageKey: CompressionAnchorMessageKey? = null,
     @SerialName("compression_anchor_summary") val compressionAnchorSummary: String? = null,
+    @Serializable(with = RuntimeJournalSnapshotSerializer::class)
+    @SerialName("runtime_journal_snapshot") val runtimeJournalSnapshot: RuntimeJournalSnapshot? = null,
 )
 
 fun SessionDetail.resolvedMessagesOffset(loadedMessageCount: Int): Int {
@@ -480,6 +482,14 @@ object CompressionAnchorResolver {
 
 @Serializable
 data class ContextWindowSnapshot(
+    @Serializable(with = RuntimeNullableStringSerializer::class)
+    @SerialName("used_model") val usedModel: String? = null,
+    @Serializable(with = RuntimeNullableStringSerializer::class)
+    @SerialName("used_provider") val usedProvider: String? = null,
+    @Serializable(with = RuntimeNullableStringSerializer::class)
+    @SerialName("requested_model") val requestedModel: String? = null,
+    @Serializable(with = RuntimeNullableStringSerializer::class)
+    @SerialName("requested_provider") val requestedProvider: String? = null,
     @Serializable(with = LossyNullableIntSerializer::class)
     @SerialName("context_length") val contextLength: Int? = null,
     @Serializable(with = LossyNullableIntSerializer::class)
@@ -545,6 +555,10 @@ data class ChatMessage(
     val reasoning: List<ReasoningSegment>? = null,
     @SerialName("tool_calls") val toolCalls: List<ToolCall>? = null,
     @SerialName("_turnTps") val turnTokensPerSecond: Double? = null,
+    val usedModel: String? = null,
+    val usedProvider: String? = null,
+    val requestedModel: String? = null,
+    val requestedProvider: String? = null,
 ) {
     val displayText: String
         get() = content ?: text ?: parts?.joinToString("\n") { it.toString() }.orEmpty()
@@ -577,6 +591,10 @@ object ChatMessageSerializer : KSerializer<ChatMessage> {
         element<List<ReasoningSegment>?>("reasoning")
         element<List<ToolCall>?>("toolCalls")
         element<Double?>("turnTokensPerSecond")
+        element<String?>("_usedModel")
+        element<String?>("_usedProvider")
+        element<String?>("_requestedModel")
+        element<String?>("_requestedProvider")
     }
 
     override fun deserialize(decoder: Decoder): ChatMessage {
@@ -603,6 +621,10 @@ object ChatMessageSerializer : KSerializer<ChatMessage> {
             messageId = element["message_id"].stringOrNull() ?: element["messageId"].stringOrNull(),
             displayKind = element["display_kind"].stringOrNull(),
             source = element["_source"].stringOrNull(),
+            usedModel = element["_usedModel"].attributionStringOrNull(),
+            usedProvider = element["_usedProvider"].attributionStringOrNull(),
+            requestedModel = element["_requestedModel"].attributionStringOrNull(),
+            requestedProvider = element["_requestedProvider"].attributionStringOrNull(),
             name = element["name"].stringOrNull(),
             toolCallId = element["tool_call_id"].stringOrNull() ?: element["toolCallId"].stringOrNull(),
             toolUseId = element["tool_use_id"].stringOrNull() ?: element["toolUseId"].stringOrNull(),
@@ -631,6 +653,10 @@ object ChatMessageSerializer : KSerializer<ChatMessage> {
                 value.toolUseId?.let { put("tool_use_id", it) }
                 value.displayKind?.let { put("display_kind", it) }
                 value.source?.let { put("_source", it) }
+                value.usedModel?.let { put("_usedModel", it) }
+                value.usedProvider?.let { put("_usedProvider", it) }
+                value.requestedModel?.let { put("_requestedModel", it) }
+                value.requestedProvider?.let { put("_requestedProvider", it) }
                 value.parts?.let { put("parts", jsonEncoder.json.encodeToJsonElement(it)) }
                 value.attachments?.let { put("attachments", jsonEncoder.json.encodeToJsonElement(it)) }
                 value.reasoning?.let { put("reasoning", jsonEncoder.json.encodeToJsonElement(it)) }
@@ -1973,6 +1999,9 @@ private fun Instant.toEpochSecondWithFraction(): Double =
 
 private fun JsonElement?.stringOrNull(): String? =
     (this as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun JsonElement?.attributionStringOrNull(): String? =
+    (this as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
 
 private fun JsonElement?.doubleValueOrNull(): Double? {
     val primitive = this as? JsonPrimitive ?: return null

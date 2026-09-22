@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">درخواست کردہ: %1$s</string>
+    <string name="runtime_model_used">استعمال شدہ: %1$s</string>
+    <string name="runtime_model_last">آخری جواب: %1$s</string>
+    <string name="runtime_model_unconfirmed">اصل ماڈل کی تصدیق نہیں ہوئی</string>
+    <string name="runtime_model_fallback_active">متبادل ماڈل فعال ہے</string>
+    <string name="runtime_model_fallback_used">متبادل ماڈل استعمال ہوا</string>
+    <string name="runtime_model_fallback_pending">متبادل ماڈل پر منتقلی جاری ہے</string>
+</resources>

@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">מבוקש: %1$s</string>
+    <string name="runtime_model_used">בשימוש: %1$s</string>
+    <string name="runtime_model_last">תגובה אחרונה: %1$s</string>
+    <string name="runtime_model_unconfirmed">המודל בפועל לא אושר</string>
+    <string name="runtime_model_fallback_active">מודל גיבוי פעיל</string>
+    <string name="runtime_model_fallback_used">נעשה שימוש במודל גיבוי</string>
+    <string name="runtime_model_fallback_pending">מעבר למודל גיבוי</string>
+</resources>

@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">Requested: %1$s</string>
+    <string name="runtime_model_used">Used: %1$s</string>
+    <string name="runtime_model_last">Last response: %1$s</string>
+    <string name="runtime_model_unconfirmed">Effective model not confirmed</string>
+    <string name="runtime_model_fallback_active">Fallback active</string>
+    <string name="runtime_model_fallback_used">Fallback used</string>
+    <string name="runtime_model_fallback_pending">Fallback recovery reported — model not confirmed</string>
+</resources>

@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">Gevraagd: %1$s</string>
+    <string name="runtime_model_used">Gebruikt: %1$s</string>
+    <string name="runtime_model_last">Laatste antwoord: %1$s</string>
+    <string name="runtime_model_unconfirmed">Werkelijk model niet bevestigd</string>
+    <string name="runtime_model_fallback_active">Reservemodel actief</string>
+    <string name="runtime_model_fallback_used">Reservemodel gebruikt</string>
+    <string name="runtime_model_fallback_pending">Overschakelen naar reservemodel</string>
+</resources>

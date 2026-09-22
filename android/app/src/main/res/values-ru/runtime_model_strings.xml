@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">Запрошено: %1$s</string>
+    <string name="runtime_model_used">Использовано: %1$s</string>
+    <string name="runtime_model_last">Последний ответ: %1$s</string>
+    <string name="runtime_model_unconfirmed">Фактическая модель не подтверждена</string>
+    <string name="runtime_model_fallback_active">Резервная модель активна</string>
+    <string name="runtime_model_fallback_used">Использована резервная модель</string>
+    <string name="runtime_model_fallback_pending">Переход на резервную модель</string>
+</resources>

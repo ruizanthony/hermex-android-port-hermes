@@ -299,6 +299,8 @@ data class ChatUiState(
     val workspaceSuggestions: List<String> = emptyList(),
     val skillSuggestions: List<SlashSkillSuggestion> = emptyList(),
     val selectedModel: ModelSummary? = null,
+    val runtimeModel: com.uzairansar.hermex.core.model.RuntimeModelSnapshot? = null,
+    val fallbackPending: Boolean = false,
     val selectedProfile: ProfileSummary? = null,
     val pendingProfileSwitch: PendingProfileSwitch? = null,
     val activeProfileName: String? = null,
@@ -664,6 +666,15 @@ class ChatViewModel internal constructor(
             transform(
                 current.copy(
                     messages = snapshot.messages,
+                    runtimeModel = if (fromCache == true) null else {
+                        snapshot.runtimeModel?.takeIf {
+                            it.sessionId == sessionId && it.streamId == snapshot.activeStreamId
+                        } ?: current.runtimeModel?.takeIf {
+                            it.sessionId == sessionId && it.streamId == snapshot.activeStreamId
+                        }
+                    },
+                    fallbackPending = current.fallbackPending && snapshot.activeStreamId != null &&
+                        snapshot.activeStreamId == current.activeStreamId,
                     hasPersistedConversation = snapshot.messages.isNotEmpty() ||
                         snapshot.messagesOffset > 0 || snapshot.hasOlderMessages,
                     messagesOffset = snapshot.messagesOffset,
@@ -2895,6 +2906,8 @@ class ChatViewModel internal constructor(
                         btwStreamOwnerId = null
                         btwJob = null
                     }
+                    is SseEvent.RuntimeModel,
+                    is SseEvent.Warning,
                     is SseEvent.Compressed,
                     is SseEvent.Reasoning,
                     is SseEvent.ToolStarted,
@@ -3336,6 +3349,12 @@ class ChatViewModel internal constructor(
         streamPacingJob = null
         streamPacingOwnerId = streamId
         if (attachedStreamId != streamId) compressedContinuation = null
+        _state.update { current ->
+            current.copy(
+                runtimeModel = current.runtimeModel?.takeIf { it.sessionId == sessionId && it.streamId == streamId },
+                fallbackPending = current.fallbackPending && attachedStreamId == streamId,
+            )
+        }
         attachedStreamId = streamId
         pendingStreamingAssistantText = ""
         var assistantText = _state.value.streamingAssistantText()
@@ -3368,6 +3387,21 @@ class ChatViewModel internal constructor(
                 when (event) {
                     is SseEvent.Compressed -> {
                         compressedContinuation = event.continuationSessionId?.trim()?.takeIf { it.isNotEmpty() && it != sessionId }
+                    }
+                    is SseEvent.RuntimeModel -> {
+                        val observed = event.snapshot
+                        if (observed.sessionId == sessionId && observed.streamId == streamId &&
+                            observed.phase in setOf("observed_output", "route_observed")) {
+                            _state.update {
+                                it.copy(runtimeModel = observed, fallbackPending = false)
+                            }
+                        }
+                    }
+                    is SseEvent.Warning -> {
+                        // A warning reports a recovery attempt, not a successful model response.
+                        if (event.type == "fallback") {
+                            _state.update { it.copy(fallbackPending = true, runtimeModel = null) }
+                        }
                     }
                     is SseEvent.Token -> {
                         val tokenText = if (replayAfterSeq == 0) {
@@ -4006,7 +4040,12 @@ class ChatViewModel internal constructor(
         }
         event.usage?.let { usage ->
             if (!ChatStreamOwnershipPolicy.stillOwnsStream(streamId, _state.value.activeStreamId)) return
-            _state.update { it.copy(contextWindowSnapshot = usage) }
+            _state.update { current ->
+                current.copy(
+                    contextWindowSnapshot = usage,
+                    messages = current.messages.withRuntimeAttribution(usage),
+                )
+            }
         }
         if (!ChatStreamOwnershipPolicy.stillOwnsStream(streamId, _state.value.activeStreamId)) return
         completeCurrentResponse(streamId, needsTranscriptRefresh = completedTranscript == null)

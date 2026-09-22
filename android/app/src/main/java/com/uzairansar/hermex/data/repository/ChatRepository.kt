@@ -57,6 +57,7 @@ private const val MESSAGE_PAGE_LIMIT = 50
 
 data class ChatSessionSnapshot(
     val messages: List<ChatMessage>,
+    val runtimeModel: com.uzairansar.hermex.core.model.RuntimeModelSnapshot? = null,
     val messagesOffset: Int = 0,
     val hasOlderMessages: Boolean = false,
     val compressionReferenceCard: CompressionReferenceCard? = null,
@@ -495,6 +496,7 @@ class ChatRepository(
                 persistedToolCalls = session?.toolCalls,
             ),
             contextWindowSnapshot = session?.contextWindowSnapshot(),
+            runtimeModel = session?.runtimeJournalSnapshot?.runtimeModel,
             title = session?.title,
             sessionId = session?.sessionId,
             pinned = session?.pinned,

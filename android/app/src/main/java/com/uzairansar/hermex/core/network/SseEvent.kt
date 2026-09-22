@@ -4,6 +4,7 @@ import com.uzairansar.hermex.core.model.ContextWindowSnapshot
 import com.uzairansar.hermex.core.model.ApprovalPendingResponse
 import com.uzairansar.hermex.core.model.ClarificationPendingResponse
 import com.uzairansar.hermex.core.model.SessionDetail
+import com.uzairansar.hermex.core.model.RuntimeModelSnapshot
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
@@ -14,6 +15,8 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 
 sealed interface SseEvent {
+    data class RuntimeModel(val snapshot: RuntimeModelSnapshot) : SseEvent
+    data class Warning(val type: String?, val message: String?) : SseEvent
     data class Compressed(val continuationSessionId: String?) : SseEvent
     data class Token(val text: String) : SseEvent
     data class InterimAssistant(val text: String, val alreadyStreamed: Boolean?) : SseEvent
@@ -104,6 +107,13 @@ object SseEventDecoder {
         val type = eventType ?: "message"
         return try {
             when (type) {
+                "runtime_model" -> SseEvent.RuntimeModel(HermesJson.decodeFromString<RuntimeModelSnapshot>(data))
+                "warning" -> (HermesJson.parseToJsonElement(data) as? JsonObject)?.let { payload ->
+                    SseEvent.Warning(
+                        (payload["type"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull,
+                        (payload["message"] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull,
+                    )
+                } ?: SseEvent.Ignored
                 "compressed" -> HermesJson.decodeFromString<TerminalPayload>(data).let {
                     SseEvent.Compressed(it.continuationSessionId ?: it.newSessionId)
                 }
@@ -152,7 +162,8 @@ object SseEventDecoder {
                 else -> SseEvent.Ignored
             }
         } catch (error: Throwable) {
-            SseEvent.TransportError("Malformed SSE $type event.")
+            if (type == "runtime_model" || type == "warning") SseEvent.Ignored
+            else SseEvent.TransportError("Malformed SSE $type event.")
         }
     }
 

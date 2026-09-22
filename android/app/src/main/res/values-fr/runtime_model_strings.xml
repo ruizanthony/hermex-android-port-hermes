@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">Demandé : %1$s</string>
+    <string name="runtime_model_used">Utilisé : %1$s</string>
+    <string name="runtime_model_last">Dernière réponse : %1$s</string>
+    <string name="runtime_model_unconfirmed">Modèle effectif non confirmé</string>
+    <string name="runtime_model_fallback_active">Secours actif</string>
+    <string name="runtime_model_fallback_used">Secours utilisé</string>
+    <string name="runtime_model_fallback_pending">Récupération par secours signalée — modèle non confirmé</string>
+</resources>

@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">要求モデル：%1$s</string>
+    <string name="runtime_model_used">使用モデル：%1$s</string>
+    <string name="runtime_model_last">前回の応答：%1$s</string>
+    <string name="runtime_model_unconfirmed">実際のモデルは未確認</string>
+    <string name="runtime_model_fallback_active">代替モデルを使用中</string>
+    <string name="runtime_model_fallback_used">代替モデルを使用済み</string>
+    <string name="runtime_model_fallback_pending">代替モデルへ切り替え中</string>
+</resources>

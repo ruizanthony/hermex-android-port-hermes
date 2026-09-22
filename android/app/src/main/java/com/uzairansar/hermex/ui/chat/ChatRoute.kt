@@ -1,4 +1,6 @@
 package com.uzairansar.hermex.ui.chat
+import androidx.compose.ui.res.stringResource
+import com.uzairansar.hermex.R
 
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.isActive
@@ -2414,6 +2416,7 @@ internal fun ComposerSurface(
             .testTag("chat_composer"),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
+        RuntimeModelStatus(state)
         when {
             state.isRecordingVoiceNote -> ComposerVoiceRecordingStatus(
                 startedAtMillis = state.voiceNoteStartedAtMillis,
@@ -2509,7 +2512,8 @@ internal fun ComposerSurface(
                     enabled = !state.isUploadingAttachment && !state.isStreaming && !state.isViewingCachedData,
                 )
                 HermexSelectorPill(
-                    label = state.selectedModel?.label ?: state.selectedModel?.name ?: state.selectedModel?.id ?: "Model",
+                    label = stringResource(R.string.runtime_model_requested,
+                        state.selectedModel?.label ?: state.selectedModel?.name ?: state.selectedModel?.id ?: "Model"),
                     onClick = onOpenModelPicker,
                     enabled = (state.selectedModel != null || state.modelOptions.isNotEmpty()) &&
                         !state.isStreaming && !state.isViewingCachedData && !state.isRunningSessionAction,
@@ -4094,6 +4098,9 @@ private fun MessageRow(
             tools = message.toolCalls.orEmpty(),
             timestamp = message.timestamp,
             tokensPerSecond = message.turnTokensPerSecond,
+            usedModel = message.usedModel,
+            usedProvider = message.usedProvider,
+            requestedModel = message.requestedModel,
             isStreamingMessage = isStreamingMessage,
             showThinkingAndToolCards = showThinkingAndToolCards,
             thinkingCardsStartExpanded = thinkingCardsStartExpanded,
@@ -4338,6 +4345,9 @@ private fun EditMessageSheet(
 @Composable
 private fun AssistantMessageRow(
     visibleText: String,
+    usedModel: String?,
+    usedProvider: String?,
+    requestedModel: String?,
     attachments: List<MessageAttachment>,
     reasoningTexts: List<String>,
     tools: List<ToolCall>,
@@ -4390,6 +4400,7 @@ private fun AssistantMessageRow(
             }
         }
         if (visibleText.isNotBlank()) {
+            if (!isStreamingMessage) RuntimeResponseAttribution(usedModel, usedProvider, requestedModel)
             if (showsAssistantTurnTimestamp || (showsResponseSpeed && responseSpeedText(tokensPerSecond) != null)) {
                 AssistantTurnHeader(
                     timestamp = timestamp.takeIf { showsAssistantTurnTimestamp },

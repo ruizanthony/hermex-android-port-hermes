@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">요청 모델: %1$s</string>
+    <string name="runtime_model_used">사용 모델: %1$s</string>
+    <string name="runtime_model_last">마지막 응답: %1$s</string>
+    <string name="runtime_model_unconfirmed">실제 모델 확인 안 됨</string>
+    <string name="runtime_model_fallback_active">대체 모델 사용 중</string>
+    <string name="runtime_model_fallback_used">대체 모델 사용됨</string>
+    <string name="runtime_model_fallback_pending">대체 모델로 전환 중</string>
+</resources>

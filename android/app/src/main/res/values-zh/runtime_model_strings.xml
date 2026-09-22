@@ -1,0 +1,9 @@
+<resources>
+    <string name="runtime_model_requested">请求模型：%1$s</string>
+    <string name="runtime_model_used">使用模型：%1$s</string>
+    <string name="runtime_model_last">上次回复：%1$s</string>
+    <string name="runtime_model_unconfirmed">实际模型尚未确认</string>
+    <string name="runtime_model_fallback_active">备用模型已启用</string>
+    <string name="runtime_model_fallback_used">已使用备用模型</string>
+    <string name="runtime_model_fallback_pending">正在切换备用模型</string>
+</resources>
