@@ -74,6 +74,8 @@ data class ChatSessionSnapshot(
     val profile: String? = null,
     val activeStreamId: String? = null,
     val isStreaming: Boolean = false,
+    /** Live tip announced by the server when this segment was sealed by compression. */
+    val continuationSessionId: String? = null,
 )
 
 data class ChatSessionConfiguration(
@@ -506,6 +508,7 @@ class ChatRepository(
             profile = session?.profile,
             activeStreamId = activeStreamId,
             isStreaming = session?.isStreaming == true || activeStreamId != null,
+            continuationSessionId = session?.continuationSessionId?.trim()?.takeIf { it.isNotBlank() && it != session.sessionId },
         )
     }
 

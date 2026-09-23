@@ -1133,6 +1133,7 @@ fun ChatRoute(
                         onClarificationSubmit = viewModel::respondClarification,
                         onClarificationChoice = { choice -> viewModel.respondClarification(choice) },
                         onRetryUploads = viewModel::retryPendingLocalUploads,
+                        onOpenSealedContinuation = viewModel::openSealedContinuation,
                         modifier = Modifier
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState())
@@ -1935,6 +1936,7 @@ private fun ChatStatusStack(
     onClarificationSubmit: () -> Unit,
     onClarificationChoice: (String) -> Unit,
     onRetryUploads: () -> Unit,
+    onOpenSealedContinuation: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -1943,6 +1945,16 @@ private fun ChatStatusStack(
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
         ChatDisclosureVisibility(state.isViewingCachedData) { InlineNotice("Offline cache") }
+        ChatDisclosureVisibility(state.sealedContinuationId != null && state.openSessionId == null) {
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                InlineNotice(SealedContinuation.AVAILABLE_NOTICE)
+                HermexPillButton(
+                    label = "Ouvrir la suite",
+                    onClick = onOpenSealedContinuation,
+                    modifier = Modifier.testTag("chat_open_sealed_continuation"),
+                )
+            }
+        }
         ChatDisclosureVisibility(state.activeStreamRecoveryLabel != null) {
             state.activeStreamRecoveryLabel?.let { StreamRecoveryStatusPill(it) }
         }

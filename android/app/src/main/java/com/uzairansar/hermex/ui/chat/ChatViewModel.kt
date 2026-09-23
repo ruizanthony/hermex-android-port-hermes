@@ -347,6 +347,8 @@ data class ChatUiState(
     val liveReasoning: String = "",
     val liveToolActivity: String? = null,
     val openSessionId: String? = null,
+    /** Server-confirmed live continuation of this compressed (read-only) segment. */
+    val sealedContinuationId: String? = null,
     val notice: String? = null,
     val error: String? = null,
 ) {
@@ -503,6 +505,38 @@ class ChatViewModel internal constructor(
 
     fun consumeOpenSession() = _state.update { it.copy(openSessionId = null) }
 
+    /** Explicit user gesture from the sealed-segment banner. */
+    fun openSealedContinuation() {
+        val target = SealedContinuation.target(_state.value.sealedContinuationId, sessionId) ?: return
+        followSealedContinuation(target)
+    }
+
+    /**
+     * The open segment was sealed by compression after it was displayed (another
+     * client, a missed SSE `compressed` event while backgrounded): follow the
+     * server-confirmed tip instead of re-reading the frozen segment forever.
+     * A segment already known sealed (explicit historical access) is not redirected.
+     */
+    private fun followDiscoveredContinuation(sealedBefore: String?, snapshot: ChatSessionSnapshot): Boolean {
+        if (sealedBefore != null || snapshot.isStreaming) return false
+        val target = SealedContinuation.target(snapshot.continuationSessionId, sessionId) ?: return false
+        followSealedContinuation(target)
+        return true
+    }
+
+    private fun followSealedContinuation(target: String) {
+        persistPendingState()
+        compressedContinuation = target
+        _state.update {
+            it.copy(
+                sealedContinuationId = target,
+                openSessionId = target,
+                notice = SealedContinuation.REDIRECT_NOTICE,
+                error = null,
+            )
+        }
+    }
+
     override fun onCleared() {
         isClearing = true
         draftPersistenceJob?.cancel()
@@ -593,6 +627,7 @@ class ChatViewModel internal constructor(
                         messagesOffset = before.messagesOffset, hasOlderMessages = before.hasOlderMessages)
                     else snapshot
                 applySessionSnapshot(merged, fromCache = false)
+                if (followDiscoveredContinuation(before.sealedContinuationId, snapshot)) return
                 reconnectLoadedActiveStream(snapshot, fromCache = false)
             }
         } finally {
@@ -700,6 +735,8 @@ class ChatViewModel internal constructor(
                     isViewingCachedData = fromCache ?: current.isViewingCachedData,
                     activeStreamId = snapshot.activeStreamId,
                     isStreaming = snapshot.isStreaming,
+                    sealedContinuationId = if (fromCache == true) current.sealedContinuationId
+                        else SealedContinuation.target(snapshot.continuationSessionId, sessionId),
                     activeStreamRecoveryState = if (
                         current.isRecoveringStream &&
                         snapshot.isStreaming &&
@@ -1600,6 +1637,11 @@ class ChatViewModel internal constructor(
         val text = _state.value.draft.trim()
         if (text.isEmpty()) return
         val snapshot = _state.value
+        // A compressed segment rejects new turns (HTTP 409): carry the draft to its continuation.
+        if (!snapshot.isStreaming && snapshot.sealedContinuationId != null) {
+            openSealedContinuation()
+            return
+        }
         if (handleSlashCommand(text, snapshot)) return
         if (_state.value.isStreaming) return
         viewModelScope.launch {
@@ -2045,14 +2087,22 @@ class ChatViewModel internal constructor(
             throw error
         } catch (error: Throwable) {
             if (generation == sendStartGeneration) {
+                val rotation = SealedContinuation.rotation(error)
+                val continuation = rotation?.let { SealedContinuation.target(it.continuationSessionId, sessionId) }
                 restoreFailedSend(
                     optimisticMessageId,
                     text,
                     snapshot.pendingAttachments,
                     snapshot.hasPersistedConversation,
-                    error.message ?: "Send failed.",
+                    when {
+                        rotation == null -> error.message ?: "Send failed."
+                        continuation == null -> SealedContinuation.NO_TIP_ERROR
+                        else -> SealedContinuation.REDIRECT_NOTICE
+                    },
                 )
-                drainQueuedSlashMessageIfIdle()
+                // The server never replays a refused turn: the restored draft follows the tip.
+                if (continuation != null) followSealedContinuation(continuation)
+                else if (rotation == null) drainQueuedSlashMessageIfIdle()
             }
             false
         } finally {
@@ -2635,7 +2685,8 @@ class ChatViewModel internal constructor(
     }
 
     private fun drainQueuedSlashMessageIfIdle() {
-        if (_state.value.isStreaming || isDrainingQueuedSlashMessage || queuedSlashMessages.isEmpty()) return
+        if (_state.value.isStreaming || isDrainingQueuedSlashMessage || queuedSlashMessages.isEmpty() ||
+            _state.value.sealedContinuationId != null) return
         val next = queuedSlashMessages.removeFirst()
         persistQueuedDrafts()
         isDrainingQueuedSlashMessage = true
@@ -3771,9 +3822,11 @@ class ChatViewModel internal constructor(
             _state.update { it.copy(openSessionId = next) }
             return
         }
+        val sealedBefore = _state.value.sealedContinuationId
         when (val result = repository.loadSessionSnapshot(sessionId)) {
             is ResultState.Data -> {
                 applySessionSnapshot(result.value, fromCache = result.fromCache)
+                if (!result.fromCache && followDiscoveredContinuation(sealedBefore, result.value)) return
                 reconnectLoadedActiveStream(result.value, fromCache = result.fromCache)
             }
             is ResultState.Error -> _state.update { it.copy(error = result.message) }

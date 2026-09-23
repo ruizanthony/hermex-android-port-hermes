@@ -262,6 +262,7 @@ data class SessionDetail(
     @SerialName("relationship_type") val relationshipType: String? = null,
     @SerialName("read_only") val readOnly: Boolean? = null,
     @SerialName("is_read_only") val isReadOnly: Boolean? = null,
+    @SerialName("continuation_session_id") val continuationSessionId: String? = null,
     @SerialName("tool_calls") val toolCalls: List<PersistedToolCall>? = null,
     @Serializable(with = LossyNullableIntSerializer::class)
     @SerialName("compression_anchor_visible_idx") val compressionAnchorVisibleIdx: Int? = null,
