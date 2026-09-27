@@ -1573,7 +1573,47 @@ data class ModelCatalogResponse(
     val groups: List<ModelCatalogGroupSummary>? = null,
     @SerialName("active_provider") val activeProvider: String? = null,
     @SerialName("default_model") val defaultModel: String? = null,
+    @SerialName("configured_model_badges") val configuredModelBadges: Map<String, ConfiguredModelBadge>? = null,
 ) {
+    /**
+     * Picker projection: only the configured primary model and its fallback chain, in chain order.
+     * Falls back to the full catalog when the server publishes no configured chain.
+     */
+    val configuredChainModels: List<ModelSummary>
+        get() {
+            val catalog = flattenedModels
+            val chain = configuredModelBadges.orEmpty().entries
+                .filter { (key, badge) -> key.isNotBlank() && !badge.provider.isNullOrBlank() }
+                .sortedBy { (_, badge) -> badge.chainRank }
+            if (chain.isEmpty()) return catalog
+            val selected = linkedMapOf<String, ModelSummary>()
+            chain.forEach { (key, badge) ->
+                val provider = badge.provider.orEmpty().trim()
+                val bareId = key.trim().unqualifiedModelId()
+                val identity = listOf(provider.lowercase(), bareId.lowercase()).joinToString("\u001f")
+                if (identity in selected) return@forEach
+                val match = catalog.firstOrNull { model ->
+                    model.provider.equals(provider, ignoreCase = true) &&
+                        listOfNotNull(model.id, model.name).any { value -> value.trim().unqualifiedModelId().equals(bareId, ignoreCase = true) }
+                }
+                selected[identity] = match ?: ModelSummary(id = bareId, name = bareId, label = bareId, provider = provider)
+            }
+            return selected.values.toList().ifEmpty { catalog }
+        }
+
+    /** The configured primary model, resolved against the chain projection. */
+    val configuredPrimaryModel: ModelSummary?
+        get() {
+            val primaryProvider = configuredModelBadges.orEmpty().values.firstOrNull { it.isPrimary }?.provider
+            val defaultId = defaultModel?.trim()?.takeIf { it.isNotEmpty() }?.unqualifiedModelId()
+            val models = configuredChainModels
+            return models.firstOrNull { model ->
+                defaultId != null &&
+                    listOfNotNull(model.id, model.name).any { it.trim().unqualifiedModelId().equals(defaultId, ignoreCase = true) } &&
+                    (primaryProvider == null || model.provider.equals(primaryProvider, ignoreCase = true))
+            }
+        }
+
     val flattenedModels: List<ModelSummary>
         get() {
             val catalogModels = buildList {
@@ -1605,6 +1645,31 @@ data class ModelCatalogResponse(
                 }
         }
 }
+
+@Serializable
+data class ConfiguredModelBadge(
+    val role: String? = null,
+    val label: String? = null,
+    val provider: String? = null,
+) {
+    val isPrimary: Boolean
+        get() = role.equals("primary", ignoreCase = true)
+
+    /** Primary first, then "Fallback N" by N; unknown roles last. */
+    val chainRank: Int
+        get() = when {
+            isPrimary -> 0
+            role.equals("fallback", ignoreCase = true) ->
+                label?.let { CONFIGURED_FALLBACK_INDEX.find(it)?.groupValues?.get(1)?.toIntOrNull() } ?: (Int.MAX_VALUE - 1)
+            else -> Int.MAX_VALUE
+        }
+}
+
+private val CONFIGURED_FALLBACK_INDEX = Regex("(\\d+)")
+
+/** `@provider:model` → `model`; other identifiers unchanged. */
+internal fun String.unqualifiedModelId(): String =
+    if (startsWith("@") && contains(':')) substringAfter(':') else this
 
 @Serializable
 data class ModelCatalogGroupSummary(

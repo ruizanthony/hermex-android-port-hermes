@@ -193,7 +193,6 @@ import com.uzairansar.hermex.data.preferences.matchesSelection
 import com.uzairansar.hermex.data.preferences.modelIdentifier
 import com.uzairansar.hermex.data.preferences.normalizedProvider
 import com.uzairansar.hermex.data.preferences.visibleFavoriteModels
-import com.uzairansar.hermex.data.preferences.visibleRecentModels
 import com.uzairansar.hermex.data.repository.ChatRepository
 import com.uzairansar.hermex.data.repository.GitRepository
 import com.uzairansar.hermex.data.share.SharedDraftPolicy
@@ -3130,7 +3129,6 @@ private fun ModelPickerDialog(
             catalogModels = models,
             selected = selected,
             favoriteKeys = favoriteKeys,
-            recentKeys = recentKeys,
             query = query,
         ) + catalogGroups
     }
@@ -3496,12 +3494,11 @@ private fun customModelGroups(
     catalogModels: List<ModelSummary>,
     selected: ModelSummary?,
     favoriteKeys: List<ModelFavoriteKey>,
-    recentKeys: List<ModelFavoriteKey>,
     query: String,
 ): List<ModelPickerGroup> {
     val catalogKeys = catalogModels.mapNotNull { it.favoriteKeyOrNull() }.toSet()
-    val storedCustomModels = (catalogModels.visibleFavoriteModels(favoriteKeys) +
-        catalogModels.visibleRecentModels(recentKeys, favoriteKeys))
+    // Recents never resurrect models hidden from the configured chain; explicit favorites stay.
+    val storedCustomModels = catalogModels.visibleFavoriteModels(favoriteKeys)
         .distinctBy { it.favoriteKeyOrNull() }
         .filter { model ->
             val key = model.favoriteKeyOrNull()

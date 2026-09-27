@@ -377,7 +377,7 @@ class ChatRepository(
     suspend fun attachmentFile(sessionId: String, path: String): FileResponse = client.file(sessionId, path)
     suspend fun synthesizeSpeech(text: String, voice: String = "en-US-AriaNeural"): ByteArray =
         client.synthesizeSpeech(text, voice)
-    suspend fun models(): List<ModelSummary> = client.models().flattenedModels
+    suspend fun models(): List<ModelSummary> = client.models().configuredChainModels
     suspend fun commands() = client.commands().commands.orEmpty()
     suspend fun profilesResponse(): ProfilesResponse = client.profiles()
     suspend fun profiles(): List<ProfileSummary> = client.profiles().profiles.orEmpty()
